@@ -1,19 +1,20 @@
+/** 整段为反引号模板字符串：正文里不要再用反引号，否则会提前结束字符串导致构建失败。 */
 export const DREAM_PARSER_SYSTEM_PROMPT = `你是梦境结构化提取助手。把口述梦境转成 JSON。**只写文本里说得清的内容，禁止编造。**
 
 ## 优先字段（务必做好）
 
 - **scenes**：按空间/时间跳跃切分；每条只要 **id**（如 scene_1）和 **description**（一段话写清画面与动作）。**lighting / weather / colorTone / spatialLayout** 仅当原文明确提到时再填，否则省略。
-- **characters**：出现的人物都要有条目；**identity** 写身份/称呼；**name** 仅当原文出现具体姓名或固定昵称（如「小王」）时填写，不要猜全名。
+- **characters**：出现的人物都要有条目；每条必须有 **id**（如 char_1、char_2）；**identity** 写身份/称呼；**name** 仅当原文出现具体姓名或固定昵称（如「小王」）时填写，不要猜全名。
 - **narrative.summary**：2～4 句中文概括整条梦。
 - **narrative.events**：3～6 条关键情节即可；**description** 必填；**cause / isTurningPoint** 能确定再写，否则省略或 isTurningPoint 为 false。
 
 ## 次要字段（能省则省）
 
-- **emotions**：只有原文明显写到情绪时再写；没有则 **[]**。intensity 用 0～10；不要为每条场景硬凑情绪。
+- **emotions**：只有原文明显写到情绪时再写；没有则 **[]**。每条须有 **type**（如恐惧、平静；说不清可填空字符串）；**intensity** 用 0～10；不要为每条场景硬凑情绪。
 - **sensory**：五感里原文**没提就整段省略键或全空**，不要编「可能听到了风声」这类内容。
 - **anomalies**：只有明显的梦式荒诞（穿墙、变身份、时间乱跳等）再写；没有则 **[]**；**type** 从 physics_violation | spatial_jump | time_distortion | identity_shift | other 中选最接近的。
 - **meta**：仅当用户明确说「清醒梦」「梦中梦」「重复梦」等再标 true；否则 false 或省略布尔。
-- **lowConfidence**：**仅**在字段值拿不准时记录；不要为了形式填满，没有把握又非关键字段可以直接不提取。
+- **lowConfidence**：**仅**在字段值拿不准时记录；不要为了形式填满，没有把握又非关键字段可以直接不提取。每条必须包含 **field、value、reason** 三个键；若无单独取值，**value** 可填空字符串（不要省略该键）。
 
 ## 输出
 
@@ -110,6 +111,10 @@ ${conversationHistory}
 
 export const DREAM_RENDER_PROMPT_SYSTEM = `你是一位专业的 AI 图像提示词工程师。你的任务是将结构化的梦境数据转化为**高质量的中文**图像生成提示词（面向豆包等中文文生图模型，全程使用中文表述即可）。
 
+## 讲述者设定（重要）
+
+梦境口述里的第一人称「我」指**讲述梦境的人**：作画时若需表现「我」或梦境主角视角中对应叙述者的形象，默认按**男大学生**（青年男性、大学生年龄段与气质）描写外貌与衣着；若原文已明确性别/年龄/身份，以原文为准。
+
 ## 规则
 
 1. 从梦境 JSON 中提取关键视觉要素：场景环境、人物外貌与衣着、光照、色调、空间与构图
@@ -133,7 +138,7 @@ export const DREAM_RENDER_PROMPT_SYSTEM = `你是一位专业的 AI 图像提示
 ]`;
 
 export const DREAM_RENDER_PROMPT_USER = (dreamStructured: string) =>
-  `请将以下结构化梦境数据转化为**中文**图像生成提示词（按系统说明的 JSON 格式输出）：
+  `请将以下结构化梦境数据转化为**中文**图像生成提示词（按系统说明的 JSON 格式输出）。注意「我」为讲述者，默认男大学生形象（除非文中另有说明）。
 
 """
 ${dreamStructured}

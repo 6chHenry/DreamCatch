@@ -1,8 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
 import { DreamStructuredSchema } from "@/lib/schema";
 import { DREAM_PARSER_SYSTEM_PROMPT, DREAM_PARSER_USER_PROMPT } from "@/lib/prompt-templates";
 import { parseLLMJson } from "@/lib/llm-utils";
 import { buildLLMRequestBody, resolveOpenAICompatLLM } from "@/lib/llm-request";
+
+function errorDetail(error: unknown): string {
+  if (error instanceof z.ZodError) {
+    return error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ") || error.message;
+  }
+  if (error instanceof Error) return error.message;
+  return String(error);
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -15,7 +24,14 @@ export async function POST(request: NextRequest) {
     const { apiUrl, apiKey, model } = resolveOpenAICompatLLM(request.headers);
 
     if (!apiUrl || !apiKey || !model) {
-      return NextResponse.json({ error: "LLM API not configured" }, { status: 500 });
+      return NextResponse.json(
+        {
+          error: "LLM API not configured",
+          detail:
+            "请配置 NEXT_PUBLIC_LLM_* 或在 .env.local 中配置对应服务商的 OPENCLAUDECODE_* / GEMINI_* / DOUBAO_*。",
+        },
+        { status: 500 }
+      );
     }
 
     const result = await callLLMWithRetry(text, apiUrl, apiKey, model, 2);
@@ -23,7 +39,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(result);
   } catch (error) {
     console.error("Parse error:", error);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    const detail = errorDetail(error);
+    return NextResponse.json({ error: "Parse failed", detail }, { status: 500 });
   }
 }
 

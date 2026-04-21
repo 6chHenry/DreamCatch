@@ -157,6 +157,7 @@ export default function Home() {
   const [polishMessages, setPolishMessages] = useState<PolishMessage[]>([]);
   const [polishInput, setPolishInput] = useState("");
   const [isPolishing, setIsPolishing] = useState(false);
+  const [parseError, setParseError] = useState<string | null>(null);
 
   const selectedModelConfig = MODEL_OPTIONS.find(m => m.value === selectedModel) || MODEL_OPTIONS[0];
 
@@ -372,6 +373,7 @@ export default function Home() {
     if (!textToParse) return;
 
     setRawText(textToParse);
+    setParseError(null);
 
     setIsProcessing(true);
     setCurrentStep("parsing");
@@ -382,7 +384,12 @@ export default function Home() {
         headers: modelHeaders(),
         body: JSON.stringify({ text: textToParse }),
       });
-      if (!parseResponse.ok) throw new Error("Parse failed");
+      if (!parseResponse.ok) {
+        const msg = await messageFromErrorResponse(parseResponse);
+        setParseError(msg);
+        setCurrentStep("polishing");
+        return;
+      }
       const structured = await parseResponse.json();
 
       const dream: Dream = {
@@ -403,6 +410,9 @@ export default function Home() {
       await startProbing(dream, [initialMessage]);
     } catch (error) {
       console.error("Parse error:", error);
+      const msg = error instanceof Error ? error.message : "未知错误";
+      setParseError(msg);
+      setCurrentStep("polishing");
     } finally {
       setIsProcessing(false);
     }
@@ -559,6 +569,7 @@ export default function Home() {
     setVideoPrompt(""); setVideoUrl(""); setIsGeneratingVideo(false);
     setAudioFileName("");
     setPolishedText(""); setPolishMessages([]); setPolishInput("");
+    setParseError(null);
   };
 
   const progress = (() => {
@@ -778,6 +789,11 @@ export default function Home() {
                 />
               </div>
 
+              {parseError && (
+                <p className="w-full text-sm text-red-400/90 bg-red-500/10 border border-red-500/25 rounded-xl px-3 py-2 whitespace-pre-wrap">
+                  结构化提取失败：{parseError}
+                </p>
+              )}
               <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="mt-4">
                 <button
                   onClick={handleConfirmPolish}

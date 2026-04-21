@@ -4,6 +4,21 @@ const nullableString = z.string().nullable().optional().transform(v => v ?? unde
 const nullableNumber = z.number().nullable().optional().transform(v => v ?? undefined);
 const nullableBoolean = z.boolean().nullable().optional().transform(v => v ?? undefined);
 
+/** 模型常漏写字段；空串或缺省统一成空字符串。 */
+const optionalTrimmedString = z
+  .union([z.string(), z.null(), z.undefined()])
+  .transform((v) => (typeof v === "string" ? v.trim() : ""));
+
+/** LLM 常漏写 id；解析时按序号补全 scene_1 / char_1。 */
+export const SceneRawSchema = z.object({
+  id: z.string().optional(),
+  description: z.string(),
+  lighting: nullableString,
+  weather: nullableString,
+  colorTone: nullableString,
+  spatialLayout: nullableString,
+});
+
 export const SceneSchema = z.object({
   id: z.string(),
   description: z.string(),
@@ -11,6 +26,14 @@ export const SceneSchema = z.object({
   weather: nullableString,
   colorTone: nullableString,
   spatialLayout: nullableString,
+});
+
+export const CharacterRawSchema = z.object({
+  id: z.string().optional(),
+  identity: z.string(),
+  name: nullableString,
+  appearance: nullableString,
+  relationship: nullableString,
 });
 
 export const CharacterSchema = z.object({
@@ -32,10 +55,18 @@ export const NarrativeSchema = z.object({
   summary: z.string(),
 });
 
+/** 模型常漏写 type / 错写 intensity；补默认值以通过校验。 */
+const emotionIntensity = z
+  .union([z.number(), z.null(), z.undefined()])
+  .transform((v) => {
+    if (typeof v !== "number" || Number.isNaN(v)) return 5;
+    return Math.min(10, Math.max(0, v));
+  });
+
 export const EmotionSchema = z.object({
   timestamp: nullableString,
-  type: z.string(),
-  intensity: z.number().min(0).max(10),
+  type: optionalTrimmedString,
+  intensity: emotionIntensity,
   trigger: nullableString,
 });
 
@@ -62,14 +93,32 @@ export const DreamMetaSchema = z.object({
 });
 
 export const LowConfidenceItemSchema = z.object({
-  field: z.string(),
-  value: z.string(),
-  reason: z.string(),
+  field: optionalTrimmedString,
+  value: optionalTrimmedString,
+  reason: optionalTrimmedString,
 });
 
+const scenesWithIds = z.array(SceneRawSchema).transform((arr) =>
+  arr.map((s, i) =>
+    SceneSchema.parse({
+      ...s,
+      id: s.id?.trim() || `scene_${i + 1}`,
+    })
+  )
+);
+
+const charactersWithIds = z.array(CharacterRawSchema).transform((arr) =>
+  arr.map((c, i) =>
+    CharacterSchema.parse({
+      ...c,
+      id: c.id?.trim() || `char_${i + 1}`,
+    })
+  )
+);
+
 export const DreamStructuredSchema = z.object({
-  scenes: z.array(SceneSchema),
-  characters: z.array(CharacterSchema),
+  scenes: scenesWithIds,
+  characters: charactersWithIds,
   narrative: NarrativeSchema,
   emotions: z.array(EmotionSchema),
   sensory: SensorySchema,
