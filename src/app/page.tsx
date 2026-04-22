@@ -2,7 +2,8 @@
 
 import { useState, useCallback, useMemo, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Moon, BookOpen, Loader2, ArrowRight, SkipForward, Sparkles, Copy, Check, Film, ChevronDown, Users, Wand2, Upload } from "lucide-react";
+import { Moon, BookOpen, Loader2, ArrowRight, SkipForward, Sparkles, Copy, Check, Film, ChevronDown, Users, Wand2, Upload, Info } from "lucide-react";
+import DreamHeroHeadline from "@/components/DreamHeroHeadline";
 import VoiceRecorder from "@/components/VoiceRecorder";
 import ProbeChat from "@/components/ProbeChat";
 import AudioPlayer from "@/components/AudioPlayer";
@@ -144,7 +145,9 @@ export default function Home() {
   const [probeComplete, setProbeComplete] = useState(false);
   const [scenePrompts, setScenePrompts] = useState<ScenePrompt[]>([]);
   const [sceneImages, setSceneImages] = useState<Array<{ sceneIndex: number; imageUrl: string; prompt: string; error?: string }>>([]);
-  const [isRendering, setIsRendering] = useState(false);
+  const [promptDraftsByScene, setPromptDraftsByScene] = useState<Record<number, string>>({});
+  const [isLoadingPrompts, setIsLoadingPrompts] = useState(false);
+  const [isRenderingImages, setIsRenderingImages] = useState(false);
   const [copiedIndex, setCopiedIndex] = useState<string | null>(null);
   const [videoPrompt, setVideoPrompt] = useState("");
   const [videoUrl, setVideoUrl] = useState("");
@@ -481,31 +484,74 @@ export default function Home() {
   const handleGeneratePrompts = async () => {
     if (!currentDream) return;
     setCurrentStep("rendering");
-    setIsRendering(true);
+    setSceneImages([]);
+    setIsLoadingPrompts(true);
 
     try {
       const response = await fetch("/api/render", {
         method: "POST",
         headers: modelHeaders(),
-        body: JSON.stringify({ dreamStructured: currentDream.structured }),
+        body: JSON.stringify({ dreamStructured: currentDream.structured, phase: "prompts" }),
       });
-      if (!response.ok) throw new Error("Render failed");
+      if (!response.ok) {
+        throw new Error(await messageFromErrorResponse(response));
+      }
       const result = await response.json();
 
       if (result.scenePrompts) {
-        setScenePrompts(result.scenePrompts.map((sp: { sceneIndex: number; prompts: string[] }) => ({
+        const mapped = result.scenePrompts.map((sp: { sceneIndex: number; prompts: string[] }) => ({
           sceneIndex: sp.sceneIndex,
-          description: currentDream.structured.scenes?.[sp.sceneIndex]?.description || `场景 ${sp.sceneIndex + 1}`,
+          description: currentDream!.structured.scenes?.[sp.sceneIndex]?.description || `场景 ${sp.sceneIndex + 1}`,
           prompts: sp.prompts,
-        })));
-      }
-      if (result.sceneImages) {
-        setSceneImages(result.sceneImages);
+        }));
+        setScenePrompts(mapped);
+        const drafts: Record<number, string> = {};
+        for (const sp of mapped) {
+          drafts[sp.sceneIndex] = sp.prompts[0] || "";
+        }
+        setPromptDraftsByScene(drafts);
       }
     } catch (error) {
       console.error("Render error:", error);
     } finally {
-      setIsRendering(false);
+      setIsLoadingPrompts(false);
+    }
+  };
+
+  const handleGenerateSceneImages = async () => {
+    if (!currentDream || scenePrompts.length === 0) return;
+    const invalid = scenePrompts.some((sp) => !(promptDraftsByScene[sp.sceneIndex] ?? sp.prompts[0])?.trim());
+    if (invalid) return;
+
+    setIsRenderingImages(true);
+    try {
+      const edited = scenePrompts.map((sp) => ({
+        sceneIndex: sp.sceneIndex,
+        prompts: [
+          (promptDraftsByScene[sp.sceneIndex] ?? sp.prompts[0] ?? "").trim(),
+          ...sp.prompts.slice(1),
+        ],
+      }));
+      const response = await fetch("/api/render", {
+        method: "POST",
+        headers: modelHeaders(),
+        body: JSON.stringify({
+          dreamStructured: currentDream.structured,
+          phase: "images",
+          scenePrompts: edited,
+        }),
+      });
+      if (!response.ok) {
+        throw new Error(await messageFromErrorResponse(response));
+      }
+      const result = await response.json();
+      if (result.sceneImages) {
+        setSceneImages(result.sceneImages);
+      }
+    } catch (error) {
+      console.error("Scene images error:", error);
+    } finally {
+      setIsRenderingImages(false);
     }
   };
 
@@ -565,7 +611,8 @@ export default function Home() {
     if (audioBlobUrl) URL.revokeObjectURL(audioBlobUrl);
     reset();
     setTextInput(""); setShowTextInput(true); setProbeComplete(false);
-    setScenePrompts([]); setSceneImages([]); setIsRendering(false);
+    setScenePrompts([]); setSceneImages([]); setPromptDraftsByScene({});
+    setIsLoadingPrompts(false); setIsRenderingImages(false);
     setVideoPrompt(""); setVideoUrl(""); setIsGeneratingVideo(false);
     setAudioFileName("");
     setPolishedText(""); setPolishMessages([]); setPolishInput("");
@@ -583,7 +630,7 @@ export default function Home() {
         <div className="flex items-center gap-3">
           <Moon className="text-indigo-400" size={24} />
           <h1 className="text-lg font-semibold text-white/90">掬梦</h1>
-          <span className="text-xs text-white/30">DreamCatch AI</span>
+          <span className="text-xs text-white/30">DreamCup AI</span>
         </div>
         <div className="flex items-center gap-4">
           <div className="relative">
@@ -618,6 +665,10 @@ export default function Home() {
             <BookOpen size={16} />
             梦境日志
           </Link>
+          <Link href="/about" className="flex items-center gap-2 text-sm text-white/50 hover:text-white/80 transition-colors">
+            <Info size={16} />
+            关于
+          </Link>
         </div>
       </header>
 
@@ -636,7 +687,7 @@ export default function Home() {
         <AnimatePresence mode="wait">
           {currentStep === "recording" && (
             <motion.div key="recording" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }} className="w-full max-w-lg flex flex-col items-center">
-              <h2 className="text-2xl font-light text-white/80 mb-2">你梦到了什么？</h2>
+              <DreamHeroHeadline />
               <p className="text-sm text-white/40 mb-2 text-center">刚醒时先记下来：口述、上传昨晚录音、或直接打字——都会进入润色与后续步骤</p>
 
               <div className="w-full flex flex-col sm:flex-row gap-2 mb-6">
@@ -838,7 +889,7 @@ export default function Home() {
                 <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="mt-4">
                   <button onClick={handleGeneratePrompts}
                     className="w-full py-3 rounded-xl bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-400 hover:to-purple-500 text-sm font-medium transition-all flex items-center justify-center gap-2">
-                    生成场景图片 <ArrowRight size={16} />
+                    生成场景提示词 <ArrowRight size={16} />
                   </button>
                 </motion.div>
               )}
@@ -850,7 +901,12 @@ export default function Home() {
               <h2 className="text-lg font-medium text-white/80 mb-4"><Sparkles size={18} className="inline mr-2 text-indigo-400" />场景生图</h2>
               {audioBlobUrl && <div className="mb-4"><AudioPlayer src={audioBlobUrl} /></div>}
 
-              {isRendering ? (
+              {isLoadingPrompts ? (
+                <div className="flex flex-col items-center gap-4 py-12">
+                  <Loader2 className="animate-spin text-indigo-400" size={40} />
+                  <p className="text-white/50">正在生成场景提示词...</p>
+                </div>
+              ) : isRenderingImages ? (
                 <div className="flex flex-col items-center gap-4 py-12">
                   <Loader2 className="animate-spin text-indigo-400" size={40} />
                   <p className="text-white/50">正在生成场景图片...</p>
@@ -870,7 +926,7 @@ export default function Home() {
                         <div className="aspect-video"><img src={img.imageUrl} alt={`场景 ${img.sceneIndex + 1}`} className="w-full h-full object-cover" /></div>
                       ) : (
                         <div className="aspect-video flex items-center justify-center bg-white/5">
-                          <p className="text-xs text-white/30">{img.error ? '生成失败' : '图片生成失败'}</p>
+                          <p className="text-xs text-white/30">{img.error ? "生成失败" : "图片生成失败"}</p>
                         </div>
                       )}
                     </div>
@@ -882,40 +938,97 @@ export default function Home() {
                 </div>
               ) : scenePrompts.length > 0 ? (
                 <div className="space-y-6">
-                  <p className="text-xs text-white/30">图像生成API未配置，以下为生成的提示词</p>
-                  {scenePrompts.map((scene) => (
-                    <div key={scene.sceneIndex} className="rounded-xl bg-white/[0.03] border border-white/10 overflow-hidden">
-                      <div className="px-4 py-3 border-b border-white/5 bg-white/[0.02]">
-                        <h4 className="text-sm font-medium text-white/70">场景 {scene.sceneIndex + 1}</h4>
-                        {scene.description && <p className="text-xs text-white/40 mt-1">{scene.description}</p>}
-                      </div>
-                      <div className="divide-y divide-white/5">
-                        {scene.prompts.map((prompt, i) => {
-                          const copyKey = `${scene.sceneIndex}-${i}`;
-                          return (
-                            <div key={i} className="px-4 py-3 group relative">
-                              <div className="flex items-start justify-between gap-3">
-                                <div className="flex-1 min-w-0">
-                                  <span className="text-[10px] text-white/20 uppercase tracking-wider">变体 {i + 1}</span>
-                                  <p className="text-xs text-white/60 mt-1 leading-relaxed whitespace-pre-wrap break-words">{prompt}</p>
-                                </div>
-                                <button onClick={() => handleCopyPrompt(prompt, copyKey)} className="shrink-0 p-1.5 rounded-lg hover:bg-white/10 transition-colors" title="复制提示词">
-                                  {copiedIndex === copyKey ? <Check size={14} className="text-green-400" /> : <Copy size={14} className="text-white/30 group-hover:text-white/60" />}
-                                </button>
-                              </div>
+                  <p className="text-xs text-white/40">
+                    以下为每个场景的提示词，可修改后再一键生图；主提示词（第一条）将用于画面生成，备选变体可对照或复制。
+                  </p>
+                  {scenePrompts.map((scene) => {
+                    const primaryKey = `${scene.sceneIndex}-0`;
+                    const primaryValue = promptDraftsByScene[scene.sceneIndex] ?? scene.prompts[0] ?? "";
+                    return (
+                      <div key={scene.sceneIndex} className="rounded-xl bg-white/[0.03] border border-white/10 overflow-hidden">
+                        <div className="px-4 py-3 border-b border-white/5 bg-white/[0.02]">
+                          <h4 className="text-sm font-medium text-white/70">场景 {scene.sceneIndex + 1}</h4>
+                          {scene.description && (
+                            <p className="text-xs text-white/40 mt-1 leading-relaxed">{scene.description}</p>
+                          )}
+                        </div>
+                        <div className="p-4 space-y-3">
+                          <div>
+                            <div className="flex items-center justify-between gap-2 mb-1.5">
+                              <span className="text-[10px] text-indigo-300/80 uppercase tracking-wider">主提示词（用于生图）</span>
+                              <button
+                                type="button"
+                                onClick={() => handleCopyPrompt(primaryValue, primaryKey)}
+                                className="p-1.5 rounded-lg hover:bg-white/10 transition-colors"
+                                title="复制"
+                              >
+                                {copiedIndex === primaryKey ? (
+                                  <Check size={14} className="text-green-400" />
+                                ) : (
+                                  <Copy size={14} className="text-white/30" />
+                                )}
+                              </button>
                             </div>
-                          );
-                        })}
+                            <textarea
+                              value={primaryValue}
+                              onChange={(e) =>
+                                setPromptDraftsByScene((prev) => ({
+                                  ...prev,
+                                  [scene.sceneIndex]: e.target.value,
+                                }))
+                              }
+                              rows={5}
+                              className="w-full bg-white/[0.04] border border-white/10 rounded-xl px-3 py-2.5 text-sm text-white/85 placeholder:text-white/25 focus:outline-none focus:border-indigo-500/45 resize-y min-h-[6rem]"
+                              placeholder="编辑用于生成该场景画面的中文提示词"
+                            />
+                          </div>
+                          {scene.prompts.length > 1 && (
+                            <div className="space-y-2 pt-2 border-t border-white/5">
+                              <span className="text-[10px] text-white/25 uppercase tracking-wider">备选变体（仅参考）</span>
+                              {scene.prompts.slice(1).map((prompt, i) => {
+                                const copyKey = `${scene.sceneIndex}-${i + 1}`;
+                                return (
+                                  <div key={i} className="flex items-start justify-between gap-2 rounded-lg bg-white/[0.02] px-3 py-2">
+                                    <p className="text-xs text-white/45 leading-relaxed whitespace-pre-wrap break-words flex-1">
+                                      变体 {i + 2}：{prompt}
+                                    </p>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleCopyPrompt(prompt, copyKey)}
+                                      className="shrink-0 p-1 rounded hover:bg-white/10"
+                                    >
+                                      {copiedIndex === copyKey ? (
+                                        <Check size={12} className="text-green-400" />
+                                      ) : (
+                                        <Copy size={12} className="text-white/30" />
+                                      )}
+                                    </button>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  ))}
-                  <button onClick={handleGenerateVideo}
-                    className="w-full py-3 rounded-xl bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-400 hover:to-purple-500 text-sm font-medium transition-all flex items-center justify-center gap-2">
-                    <Film size={16} />生成梦境视频 <ArrowRight size={16} />
+                    );
+                  })}
+                  <button
+                    type="button"
+                    onClick={handleGenerateSceneImages}
+                    disabled={
+                      isRenderingImages ||
+                      scenePrompts.some((sp) => !(promptDraftsByScene[sp.sceneIndex] ?? sp.prompts[0])?.trim())
+                    }
+                    className="w-full py-3 rounded-xl bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-400 hover:to-purple-500 text-sm font-medium transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <Sparkles size={16} />
+                    一键生成场景图
                   </button>
                 </div>
               ) : (
-                <div className="text-center py-12 text-white/30"><p>场景生成失败，请重试</p></div>
+                <div className="text-center py-12 text-white/30">
+                  <p>尚未生成提示词，请从「记忆补全」步骤进入</p>
+                </div>
               )}
             </motion.div>
           )}

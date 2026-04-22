@@ -1,6 +1,30 @@
 import fs from "fs";
 import path from "path";
-import type { Person } from "@/types/dream";
+import type { Character, Person } from "@/types/dream";
+
+const PERSON_REF_DIR = path.join(process.cwd(), "data", "person-reference");
+
+export function ensurePersonReferenceDir(): void {
+  if (!fs.existsSync(PERSON_REF_DIR)) {
+    fs.mkdirSync(PERSON_REF_DIR, { recursive: true });
+  }
+}
+
+export function personReferenceFilePath(filename: string): string {
+  return path.join(PERSON_REF_DIR, filename);
+}
+
+export function deletePersonReferenceFile(filename: string | undefined): void {
+  if (!filename) return;
+  const p = personReferenceFilePath(filename);
+  if (fs.existsSync(p)) {
+    try {
+      fs.unlinkSync(p);
+    } catch {
+      /* ignore */
+    }
+  }
+}
 
 const DATA_DIR = path.join(process.cwd(), "data");
 const PERSONS_FILE = path.join(DATA_DIR, "persons.json");
@@ -59,6 +83,20 @@ export function findPersonByName(name: string): Person | undefined {
   );
 }
 
+/** 用结构化角色里的 name / identity 对应人物库条目 */
+export function findPersonForCharacter(character: Character): Person | undefined {
+  const name = (character.name || "").trim();
+  if (name) {
+    const p = findPersonByName(name);
+    if (p) return p;
+  }
+  const identity = (character.identity || "").trim();
+  if (identity) {
+    return findPersonByName(identity);
+  }
+  return undefined;
+}
+
 export function createPerson(person: Person): Person {
   const persons = getPersons();
   persons.set(person.id, person);
@@ -71,6 +109,12 @@ export function updatePerson(id: string, updates: Partial<Person>): Person | nul
   const persons = getPersons();
   const person = persons.get(id);
   if (!person) return null;
+  if (
+    "referenceImageFilename" in updates &&
+    updates.referenceImageFilename !== person.referenceImageFilename
+  ) {
+    deletePersonReferenceFile(person.referenceImageFilename);
+  }
   const updated = { ...person, ...updates, updatedAt: new Date().toISOString() };
   persons.set(id, updated);
   personsCache = persons;
@@ -80,8 +124,12 @@ export function updatePerson(id: string, updates: Partial<Person>): Person | nul
 
 export function deletePerson(id: string): boolean {
   const persons = getPersons();
+  const existing = persons.get(id);
   const result = persons.delete(id);
   if (result) {
+    if (existing?.referenceImageFilename) {
+      deletePersonReferenceFile(existing.referenceImageFilename);
+    }
     personsCache = persons;
     writePersonsToFile(persons);
   }

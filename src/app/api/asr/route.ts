@@ -141,7 +141,7 @@ async function doubaoFlashASR(buffer: Buffer): Promise<{
     method: "POST",
     headers,
     body: JSON.stringify({
-      user: { uid: uid || "dreamcatch" },
+      user: { uid: uid || "dreamcup" },
       audio: { data: base64Audio },
       request: {
         model_name: "bigmodel",

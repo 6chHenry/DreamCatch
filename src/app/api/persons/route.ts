@@ -19,6 +19,7 @@ export async function POST(request: NextRequest) {
       lastSeen: body.lastSeen || new Date().toISOString(),
       relationships: body.relationships || [],
       dreamIds: body.dreamIds || [],
+      referenceImageFilename: body.referenceImageFilename,
       createdAt: body.createdAt || new Date().toISOString(),
       updatedAt: body.updatedAt || new Date().toISOString(),
     };

@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { Moon, ArrowLeft, Users, Calendar, Link2 } from "lucide-react";
+import { Moon, ArrowLeft, Users, Calendar, Link2, ImagePlus, Trash2, Loader2 } from "lucide-react";
 import type { Person, Dream } from "@/types/dream";
 
 export default function PersonDetailPage() {
@@ -11,6 +11,7 @@ export default function PersonDetailPage() {
   const [person, setPerson] = useState<Person | null>(null);
   const [dreams, setDreams] = useState<Dream[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [refUploading, setRefUploading] = useState(false);
 
   useEffect(() => {
     if (params.id) {
@@ -41,6 +42,47 @@ export default function PersonDetailPage() {
       console.error("Fetch person error:", error);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const referenceImageUrl = person?.referenceImageFilename
+    ? `/api/person-reference/${encodeURIComponent(person.referenceImageFilename)}`
+    : null;
+
+  const handleReferenceUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file || !person) return;
+    setRefUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await fetch(`/api/persons/${person.id}/reference-image`, {
+        method: "POST",
+        body: fd,
+      });
+      if (res.ok) {
+        setPerson(await res.json());
+      }
+    } catch (err) {
+      console.error("Reference upload error:", err);
+    } finally {
+      setRefUploading(false);
+    }
+  };
+
+  const handleReferenceDelete = async () => {
+    if (!person) return;
+    setRefUploading(true);
+    try {
+      const res = await fetch(`/api/persons/${person.id}/reference-image`, { method: "DELETE" });
+      if (res.ok) {
+        setPerson(await res.json());
+      }
+    } catch (err) {
+      console.error("Reference delete error:", err);
+    } finally {
+      setRefUploading(false);
     }
   };
 
@@ -102,14 +144,24 @@ export default function PersonDetailPage() {
 
       <main className="flex-1 px-6 py-8 max-w-4xl mx-auto w-full space-y-8">
         <div className="flex items-center gap-6">
-          <div
-            className={`w-20 h-20 rounded-full bg-gradient-to-br ${getAvatarColor(
-              person.name
-            )} flex items-center justify-center shrink-0`}
-          >
-            <span className="text-3xl font-medium text-white">
-              {person.name.charAt(0)}
-            </span>
+          <div className="relative shrink-0">
+            {referenceImageUrl ? (
+              <div className="w-20 h-20 rounded-full overflow-hidden border border-white/15 ring-2 ring-indigo-500/20">
+                <img
+                  src={referenceImageUrl}
+                  alt={`${person.name} 参考图`}
+                  className="w-full h-full object-cover"
+                />
+              </div>
+            ) : (
+              <div
+                className={`w-20 h-20 rounded-full bg-gradient-to-br ${getAvatarColor(
+                  person.name
+                )} flex items-center justify-center`}
+              >
+                <span className="text-3xl font-medium text-white">{person.name.charAt(0)}</span>
+              </div>
+            )}
           </div>
           <div>
             <h2 className="text-2xl font-light text-white/90">{person.name}</h2>
@@ -130,6 +182,46 @@ export default function PersonDetailPage() {
             </p>
           </div>
         </div>
+
+        <section className="rounded-xl border border-white/10 bg-white/[0.02] p-4">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <h3 className="text-sm font-medium text-white/70">生图参考图</h3>
+              <p className="text-xs text-white/35 mt-1 max-w-xl">
+                上传一张该人物的照片或画像。之后在梦境场景描述里若出现 Ta，生成场景图时会一并传给模型以保持外貌一致（需场景文案里能对应到该人物姓名或身份）。
+              </p>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              {referenceImageUrl && (
+                <button
+                  type="button"
+                  onClick={handleReferenceDelete}
+                  disabled={refUploading}
+                  className="p-2 rounded-lg bg-white/5 text-white/50 hover:text-red-400 hover:bg-red-500/10 transition-colors disabled:opacity-50"
+                  title="移除参考图"
+                >
+                  {refUploading ? <Loader2 size={16} className="animate-spin" /> : <Trash2 size={16} />}
+                </button>
+              )}
+              <label className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-indigo-500/20 text-indigo-200 text-xs cursor-pointer hover:bg-indigo-500/30 transition-colors disabled:opacity-50">
+                {refUploading ? <Loader2 size={14} className="animate-spin" /> : <ImagePlus size={14} />}
+                {referenceImageUrl ? "更换" : "上传"}
+                <input
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp,image/gif"
+                  className="hidden"
+                  disabled={refUploading}
+                  onChange={handleReferenceUpload}
+                />
+              </label>
+            </div>
+          </div>
+          {referenceImageUrl && (
+            <div className="mt-4 rounded-lg overflow-hidden border border-white/10 max-w-xs">
+              <img src={referenceImageUrl} alt="参考图预览" className="w-full h-auto object-cover max-h-48" />
+            </div>
+          )}
+        </section>
 
         {person.relationships.length > 0 && (
           <section>

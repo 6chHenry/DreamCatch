@@ -29,8 +29,8 @@ export async function transcodeBufferToWavPcm16kMono(input: Buffer, inputExt: st
   const id = randomUUID();
   let safeExt = (inputExt || "bin").replace(/[^a-z0-9]/gi, "");
   if (!safeExt) safeExt = "bin";
-  const inPath = path.join(os.tmpdir(), `dreamcatch-asr-in-${id}.${safeExt}`);
-  const outPath = path.join(os.tmpdir(), `dreamcatch-asr-out-${id}.wav`);
+  const inPath = path.join(os.tmpdir(), `dreamcup-asr-in-${id}.${safeExt}`);
+  const outPath = path.join(os.tmpdir(), `dreamcup-asr-out-${id}.wav`);
 
   await fs.writeFile(inPath, input);
   try {

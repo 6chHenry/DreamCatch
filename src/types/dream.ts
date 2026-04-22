@@ -23,6 +23,8 @@ export interface Person {
   lastSeen: string;
   relationships: string[];
   dreamIds: string[];
+  /** 本地文件名，位于 data/person-reference/，由上传接口写入 */
+  referenceImageFilename?: string;
   createdAt: string;
   updatedAt: string;
 }

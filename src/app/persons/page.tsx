@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Moon, Users, BookOpen } from "lucide-react";
+import { Moon, Users, BookOpen, Info } from "lucide-react";
 import type { Person } from "@/types/dream";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -72,6 +72,13 @@ export default function PersonsPage() {
         </div>
         <div className="flex items-center gap-2">
           <Link
+            href="/about"
+            className="flex items-center gap-2 px-3 py-2 rounded-lg bg-white/5 hover:bg-white/10 text-sm text-white/50 hover:text-white/70 transition-colors"
+          >
+            <Info size={14} />
+            关于
+          </Link>
+          <Link
             href="/journal"
             className="flex items-center gap-2 px-3 py-2 rounded-lg bg-white/5 hover:bg-white/10 text-sm text-white/50 hover:text-white/70 transition-colors"
           >
@@ -113,14 +120,22 @@ export default function PersonsPage() {
                 className="group rounded-xl bg-white/[0.03] border border-white/10 p-5 text-left hover:bg-white/[0.06] hover:border-white/20 transition-all"
               >
                 <div className="flex items-center gap-4">
-                  <div
-                    className={`w-12 h-12 rounded-full bg-gradient-to-br ${getAvatarColor(
-                      person.name
-                    )} flex items-center justify-center shrink-0`}
-                  >
-                    <span className="text-lg font-medium text-white">
-                      {person.name.charAt(0)}
-                    </span>
+                  <div className="relative w-12 h-12 shrink-0 rounded-full overflow-hidden border border-white/10">
+                    {person.referenceImageFilename ? (
+                      <img
+                        src={`/api/person-reference/${encodeURIComponent(person.referenceImageFilename)}`}
+                        alt=""
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <div
+                        className={`w-full h-full bg-gradient-to-br ${getAvatarColor(
+                          person.name
+                        )} flex items-center justify-center`}
+                      >
+                        <span className="text-lg font-medium text-white">{person.name.charAt(0)}</span>
+                      </div>
+                    )}
                   </div>
                   <div className="min-w-0 flex-1">
                     <h3 className="text-sm font-medium text-white/80 truncate group-hover:text-white transition-colors">

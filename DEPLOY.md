@@ -1,10 +1,10 @@
 # 部署到 Vercel（推荐用于 Next.js）
 
-DreamCatch 是标准 Next.js 应用，用 **Vercel** 部署最省事：连上 GitHub 后每次推送会自动构建。
+掬梦（DreamCup）是标准 Next.js 应用，用 **Vercel** 部署最省事：连上 GitHub 后每次推送会自动构建。
 
 ## 1. 准备代码仓库
 
-确保当前代码已推送到 GitHub（例如 `https://github.com/6chHenry/DreamCatch`）。
+确保当前代码已推送到 GitHub（仓库名可与产品名不同，例如 `https://github.com/6chHenry/DreamCatch`）。
 
 ```bash
 git add .
@@ -15,7 +15,7 @@ git push origin master
 ## 2. 在 Vercel 上导入项目
 
 1. 打开 [vercel.com](https://vercel.com)，用 GitHub 登录。
-2. **Add New… → Project**，选择 **DreamCatch** 仓库。
+2. **Add New… → Project**，选择你的项目仓库。
 3. **Framework Preset** 选 **Next.js**（一般会自动识别）。
 4. **Root Directory** 保持仓库根目录（本仓库无 monorepo 子目录则不用改）。
 5. 点击 **Deploy**。

@@ -1,3 +1,7 @@
+**掬梦（DreamCup）** — 多模态 AI 梦境记录与可视化；本仓库为 Next.js 应用。
+
+---
+
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
 ## Getting Started
