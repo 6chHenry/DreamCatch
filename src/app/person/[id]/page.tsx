@@ -22,7 +22,7 @@ export default function PersonDetailPage() {
   const fetchPerson = async (id: string) => {
     try {
       const [personRes, dreamsRes] = await Promise.all([
-        fetch(`/api/persons/${id}`),
+        fetch(`/api/persons/${id}`, { cache: "no-store" }),
         fetch(`/api/dreams`, { cache: "no-store" }),
       ]);
 

@@ -22,6 +22,11 @@ import {
   Play,
 } from "lucide-react";
 import type { Dream, DreamSceneImage } from "@/types/dream";
+import {
+  DEFAULT_SCENE_IMAGE_MODEL,
+  SCENE_IMAGE_MODEL_OPTIONS,
+  type SceneImageModelId,
+} from "@/lib/scene-image-model";
 import JSZip from "jszip";
 import AudioPlayer from "@/components/AudioPlayer";
 
@@ -101,6 +106,7 @@ export default function DreamDetailPage() {
   const [savingAll, setSavingAll] = useState(false);
   const [regenAll, setRegenAll] = useState(false);
   const [regenScenes, setRegenScenes] = useState<Set<number>>(new Set());
+  const [sceneImageModel, setSceneImageModel] = useState<SceneImageModelId>(DEFAULT_SCENE_IMAGE_MODEL);
 
   // video generation
   const [generatingVideo, setGeneratingVideo] = useState(false);
@@ -194,6 +200,7 @@ export default function DreamDetailPage() {
           dreamStructured: dream.structured,
           phase: "images",
           scenePrompts: [{ sceneIndex, prompts: [prompt] }],
+          imageModel: sceneImageModel,
         }),
       });
       if (!res.ok) throw new Error(await res.text());
@@ -242,6 +249,7 @@ export default function DreamDetailPage() {
           dreamStructured: dream.structured,
           phase: "images",
           scenePrompts,
+          imageModel: sceneImageModel,
         }),
       });
       if (!res.ok) throw new Error(await res.text());
@@ -555,6 +563,22 @@ ${dream.structured.anomalies.map((a) => `- ${a.description} [${a.type}]`).join("
               </div>
             </div>
 
+            <div className="flex flex-wrap items-center gap-3 mb-4 text-xs">
+              <span className="text-white/35">生图模型</span>
+              <select
+                value={sceneImageModel}
+                onChange={(e) => setSceneImageModel(e.target.value as SceneImageModelId)}
+                disabled={regenAll || regenScenes.size > 0}
+                className="bg-white/10 border border-white/15 rounded-lg px-2 py-1.5 text-white/80 focus:outline-none focus:border-indigo-500/40 disabled:opacity-50"
+              >
+                {SCENE_IMAGE_MODEL_OPTIONS.map((o) => (
+                  <option key={o.id} value={o.id} className="bg-[#12121a]">
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+
             <div className="space-y-5">
               {structured.scenes.map((scene, i) => {
                 const row = dream.scenes.find((s) => s.sceneIndex === i);
@@ -815,19 +839,23 @@ ${dream.structured.anomalies.map((a) => `- ${a.description} [${a.type}]`).join("
                 <button
                   key={char.id}
                   onClick={() => {
-                    const name = char.name || char.identity;
-                    if (name) {
-                      fetch(`/api/persons`)
-                        .then((r) => r.json())
-                        .then((persons: { id: string; name: string }[]) => {
-                          const match = persons.find(
-                            (p) => p.name.toLowerCase() === name.toLowerCase()
+                    const name = (char.name || "").trim();
+                    const identity = (char.identity || "").trim();
+                    if (!name && !identity) return;
+                    fetch(`/api/persons`, { cache: "no-store" })
+                      .then((r) => r.json())
+                      .then((persons: { id: string; name: string }[]) => {
+                        const match = persons.find((p) => {
+                          const pn = p.name.toLowerCase();
+                          return (
+                            (name && pn === name.toLowerCase()) ||
+                            (identity && pn === identity.toLowerCase())
                           );
-                          if (match) router.push(`/person/${match.id}`);
-                          else router.push("/persons");
-                        })
-                        .catch(() => router.push("/persons"));
-                    }
+                        });
+                        if (match) router.push(`/person/${match.id}`);
+                        else router.push("/persons");
+                      })
+                      .catch(() => router.push("/persons"));
                   }}
                   className="rounded-xl bg-white/5 border border-white/10 px-4 py-3 text-left hover:bg-white/[0.08] hover:border-white/20 transition-all group"
                 >

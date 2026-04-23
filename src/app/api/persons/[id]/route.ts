@@ -10,7 +10,9 @@ export async function GET(
   if (!person) {
     return NextResponse.json({ error: "Person not found" }, { status: 404 });
   }
-  return NextResponse.json(person);
+  return NextResponse.json(person, {
+    headers: { "Cache-Control": "private, no-store, max-age=0" },
+  });
 }
 
 export async function PATCH(

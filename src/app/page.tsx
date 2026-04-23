@@ -10,6 +10,11 @@ import AudioPlayer from "@/components/AudioPlayer";
 import { useDreamStore } from "@/stores/dream-store";
 import type { Dream, DreamFlowStep, ProbeMessage } from "@/types/dream";
 import { messageFromErrorResponse } from "@/lib/llm-utils";
+import {
+  DEFAULT_SCENE_IMAGE_MODEL,
+  SCENE_IMAGE_MODEL_OPTIONS,
+  type SceneImageModelId,
+} from "@/lib/scene-image-model";
 import Link from "next/link";
 
 /** Client-visible keys only via NEXT_PUBLIC_* — set in `.env.local`, never commit secrets. */
@@ -149,6 +154,7 @@ export default function Home() {
   const [polishInput, setPolishInput] = useState("");
   const [isPolishing, setIsPolishing] = useState(false);
   const [parseError, setParseError] = useState<string | null>(null);
+  const [sceneImageModel, setSceneImageModel] = useState<SceneImageModelId>(DEFAULT_SCENE_IMAGE_MODEL);
 
   const selectedModelConfig = MODEL_OPTIONS.find(m => m.value === selectedModel) || MODEL_OPTIONS[0];
 
@@ -529,6 +535,7 @@ export default function Home() {
           dreamStructured: currentDream.structured,
           phase: "images",
           scenePrompts: edited,
+          imageModel: sceneImageModel,
         }),
       });
       if (!response.ok) {
@@ -1010,6 +1017,21 @@ export default function Home() {
                       </div>
                     );
                   })}
+                  <div className="flex flex-wrap items-center gap-3 text-xs">
+                    <span className="text-white/40 shrink-0">生图模型</span>
+                    <select
+                      value={sceneImageModel}
+                      onChange={(e) => setSceneImageModel(e.target.value as SceneImageModelId)}
+                      disabled={isRenderingImages}
+                      className="flex-1 min-w-[12rem] max-w-md bg-white/[0.06] border border-white/12 rounded-xl px-3 py-2 text-white/85 focus:outline-none focus:border-indigo-500/45 disabled:opacity-50"
+                    >
+                      {SCENE_IMAGE_MODEL_OPTIONS.map((o) => (
+                        <option key={o.id} value={o.id} className="bg-[#12121a]">
+                          {o.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
                   <button
                     type="button"
                     onClick={handleGenerateSceneImages}

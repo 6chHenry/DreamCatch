@@ -13,7 +13,12 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="zh-CN" className={`h-full antialiased dark ${dreamHeadlineFont.variable}`}>
+    <html
+      lang="zh-CN"
+      className={`h-full antialiased dark ${dreamHeadlineFont.variable}`}
+      // DevTools / extensions (or mobile preview) may inject -webkit-touch-callout on <html> only on the client.
+      suppressHydrationWarning
+    >
       <body className="min-h-full flex flex-col bg-[#050510] font-sans">
         {children}
       </body>

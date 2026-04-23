@@ -6,6 +6,8 @@ import { buildLLMRequestBody, resolveOpenAICompatLLM } from "@/lib/llm-request";
 import { pickReferencePersonForScene } from "@/lib/person-reference-match";
 import { findPersonForCharacter, personReferenceFilePath } from "@/lib/person-store";
 import type { DreamStructured } from "@/types/dream";
+import { generateGptImage2SceneImage } from "@/lib/gpt-image-generate";
+import { DEFAULT_SCENE_IMAGE_MODEL, parseSceneImageModelId, type SceneImageModelId } from "@/lib/scene-image-model";
 
 export const runtime = "nodejs";
 
@@ -57,7 +59,9 @@ function parseImageGenerationResponse(data: {
   const imageData = data.data?.[0];
   if (!imageData) return "";
   if (imageData.b64_json) {
-    return `data:image/png;base64,${imageData.b64_json}`;
+    const raw = imageData.b64_json.trim();
+    if (raw.startsWith("data:image/")) return raw;
+    return `data:image/png;base64,${raw}`;
   }
   if (imageData.url) {
     return imageData.url;
@@ -106,7 +110,8 @@ async function grokImageFetch(url: string, init: RequestInit, logLabel: string):
 
 async function generateSceneImagesFromPrompts(
   scenePrompts: ScenePromptPayload[],
-  dreamStructured: DreamStructured
+  dreamStructured: DreamStructured,
+  imageModel: SceneImageModelId
 ): Promise<
   Array<{
     sceneIndex: number;
@@ -117,10 +122,10 @@ async function generateSceneImagesFromPrompts(
 > {
   const grokApiUrl = process.env.GROK_API_URL?.replace(/\/$/, "");
   const grokApiKey = process.env.GROK_API_KEY;
-  const grokImageModel = process.env.GROK_IMAGE_MODEL || "grok-imagine-image-pro";
+  const grokModelId = process.env.GROK_IMAGE_MODEL?.trim() || "grok-imagine-image-lite";
 
-  if (!grokApiUrl || !grokApiKey) {
-    throw new Error("图像生成 API 未配置（GROK_API_URL / GROK_API_KEY）");
+  if (imageModel === "grok-imagine-image-lite" && (!grokApiUrl || !grokApiKey)) {
+    throw new Error("Grok 生图未配置（GROK_API_URL / GROK_API_KEY）");
   }
 
   const scenes = dreamStructured.scenes || [];
@@ -166,113 +171,149 @@ async function generateSceneImagesFromPrompts(
       : prompt;
 
     try {
-      const authHeaders = {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${grokApiKey}`,
-      };
-
-      const generationBody: Record<string, unknown> = {
-        model: grokImageModel,
-        prompt: promptFinal,
-        response_format: "b64_json",
-        resolution: "2k",
-        aspect_ratio: "16:9",
-      };
-
-      const editsBody: Record<string, unknown> = {
-        model: grokImageModel,
-        prompt: promptFinal,
-        response_format: "b64_json",
-        resolution: "2k",
-        image: {
-          url: `data:image/png;base64,${refBase64}`,
-          type: "image_url",
-        },
-      };
-
-      const label = `Scene ${scenePrompt.sceneIndex} image`;
-      let response: Response;
-      if (refBase64) {
-        response = await grokImageFetch(
-          `${grokApiUrl}/images/edits`,
-          {
-            method: "POST",
-            headers: authHeaders,
-            body: JSON.stringify(editsBody),
-          },
-          `${label} (edits)`
-        );
-      } else {
-        response = await grokImageFetch(
-          `${grokApiUrl}/images/generations`,
-          {
-            method: "POST",
-            headers: authHeaders,
-            body: JSON.stringify(generationBody),
-          },
-          `${label} (generations)`
-        );
-      }
-
-      if (!response.ok && refBase64) {
-        console.warn(
-          `Scene ${scenePrompt.sceneIndex}: image edit API failed, retrying text-to-image without reference`
-        );
-        response = await grokImageFetch(
-          `${grokApiUrl}/images/generations`,
-          {
-            method: "POST",
-            headers: authHeaders,
-            body: JSON.stringify({
-              ...generationBody,
-              prompt,
-            }),
-          },
-          `${label} (generations, no ref)`
-        );
-      }
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error(`Image generation error for scene ${scenePrompt.sceneIndex}:`, errorText);
-
-        let errorMessage = "图片生成失败";
-        try {
-          const errorData = JSON.parse(errorText);
-          if (errorData.error?.message) {
-            errorMessage = errorData.error.message;
+      if (imageModel === "gpt-image-2") {
+        const gptBase =
+          process.env.GPT_IMAGE2_API_URL?.replace(/\/$/, "") ||
+          process.env.OPENCLAUDECODE_API_URL?.replace(/\/$/, "") ||
+          "";
+        const gptKey = process.env.GPT_IMAGE2_API_KEY?.trim() || "";
+        if (!gptBase || !gptKey) {
+          sceneImages.push({
+            sceneIndex: scenePrompt.sceneIndex,
+            imageUrl: "",
+            prompt: promptFinal,
+            error: "未配置 GPT_IMAGE2_API_KEY（可选 GPT_IMAGE2_API_URL，默认同 OPENCLAUDECODE_API_URL）",
+          });
+        } else {
+          const refBuf = refBase64 ? Buffer.from(refBase64, "base64") : undefined;
+          const gptResult = await generateGptImage2SceneImage({
+            baseUrl: gptBase,
+            apiKey: gptKey,
+            prompt: promptFinal,
+            refPngBuffer: refBuf,
+          });
+          if ("error" in gptResult) {
+            sceneImages.push({
+              sceneIndex: scenePrompt.sceneIndex,
+              imageUrl: "",
+              prompt: promptFinal,
+              error: gptResult.error,
+            });
+          } else {
+            sceneImages.push({
+              sceneIndex: scenePrompt.sceneIndex,
+              imageUrl: gptResult.imageUrl,
+              prompt: promptFinal,
+            });
           }
-        } catch {
-          /* ignore */
+        }
+      } else {
+        const authHeaders = {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${grokApiKey}`,
+        };
+
+        const generationBody: Record<string, unknown> = {
+          model: grokModelId,
+          prompt: promptFinal,
+          response_format: "b64_json",
+          resolution: "2k",
+          aspect_ratio: "16:9",
+        };
+
+        const editsBody: Record<string, unknown> = {
+          model: grokModelId,
+          prompt: promptFinal,
+          response_format: "b64_json",
+          resolution: "2k",
+          image: {
+            url: `data:image/png;base64,${refBase64}`,
+            type: "image_url",
+          },
+        };
+
+        const label = `Scene ${scenePrompt.sceneIndex} image`;
+        let response: Response;
+        if (refBase64) {
+          response = await grokImageFetch(
+            `${grokApiUrl}/images/edits`,
+            {
+              method: "POST",
+              headers: authHeaders,
+              body: JSON.stringify(editsBody),
+            },
+            `${label} (edits)`
+          );
+        } else {
+          response = await grokImageFetch(
+            `${grokApiUrl}/images/generations`,
+            {
+              method: "POST",
+              headers: authHeaders,
+              body: JSON.stringify(generationBody),
+            },
+            `${label} (generations)`
+          );
         }
 
-        sceneImages.push({
-          sceneIndex: scenePrompt.sceneIndex,
-          imageUrl: "",
-          prompt: refBase64 ? promptFinal : prompt,
-          error: errorMessage,
-        });
-        continue;
+        if (!response.ok && refBase64) {
+          console.warn(
+            `Scene ${scenePrompt.sceneIndex}: image edit API failed, retrying text-to-image without reference`
+          );
+          response = await grokImageFetch(
+            `${grokApiUrl}/images/generations`,
+            {
+              method: "POST",
+              headers: authHeaders,
+              body: JSON.stringify({
+                ...generationBody,
+                prompt,
+              }),
+            },
+            `${label} (generations, no ref)`
+          );
+        }
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error(`Image generation error for scene ${scenePrompt.sceneIndex}:`, errorText);
+
+          let errorMessage = "图片生成失败";
+          try {
+            const errorData = JSON.parse(errorText);
+            if (errorData.error?.message) {
+              errorMessage = errorData.error.message;
+            }
+          } catch {
+            /* ignore */
+          }
+
+          sceneImages.push({
+            sceneIndex: scenePrompt.sceneIndex,
+            imageUrl: "",
+            prompt: refBase64 ? promptFinal : prompt,
+            error: errorMessage,
+          });
+        } else {
+          const data = await response.json();
+          const imageUrl = parseImageGenerationResponse(data);
+
+          if (!imageUrl) {
+            sceneImages.push({
+              sceneIndex: scenePrompt.sceneIndex,
+              imageUrl: "",
+              prompt: promptFinal,
+              error: "No image in response",
+            });
+          } else {
+            sceneImages.push({
+              sceneIndex: scenePrompt.sceneIndex,
+              imageUrl,
+              prompt: promptFinal,
+            });
+          }
+        }
       }
-
-      const data = await response.json();
-      const imageUrl = parseImageGenerationResponse(data);
-
-      if (!imageUrl) {
-        sceneImages.push({
-          sceneIndex: scenePrompt.sceneIndex,
-          imageUrl: "",
-          prompt: promptFinal,
-          error: "No image in response",
-        });
-        continue;
-      }
-
-      sceneImages.push({
-        sceneIndex: scenePrompt.sceneIndex,
-        imageUrl,
-        prompt: promptFinal,
-      });
     } catch (error) {
       console.error(`Image generation error for scene ${scenePrompt.sceneIndex}:`, error);
       sceneImages.push({
@@ -295,9 +336,16 @@ export async function POST(request: NextRequest) {
       dreamStructured?: DreamStructured;
       phase?: "prompts" | "images";
       scenePrompts?: ScenePromptPayload[];
+      imageModel?: string;
     };
 
-    const { dreamStructured, phase = "prompts", scenePrompts: incomingScenePrompts } = body;
+    const {
+      dreamStructured,
+      phase = "prompts",
+      scenePrompts: incomingScenePrompts,
+      imageModel: imageModelRaw,
+    } = body;
+    const imageModel = parseSceneImageModelId(imageModelRaw) ?? DEFAULT_SCENE_IMAGE_MODEL;
 
     if (!dreamStructured) {
       return NextResponse.json({ error: "No dream data provided" }, { status: 400 });
@@ -309,7 +357,11 @@ export async function POST(request: NextRequest) {
       }
 
       try {
-        const sceneImages = await generateSceneImagesFromPrompts(incomingScenePrompts, dreamStructured);
+        const sceneImages = await generateSceneImagesFromPrompts(
+          incomingScenePrompts,
+          dreamStructured,
+          imageModel
+        );
         return NextResponse.json({
           status: "images_ready",
           scenePrompts: incomingScenePrompts,

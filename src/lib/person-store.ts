@@ -1,6 +1,6 @@
 import fs from "fs";
 import path from "path";
-import type { Character, Person } from "@/types/dream";
+import type { Character, Dream, Person } from "@/types/dream";
 
 const PERSON_REF_DIR = path.join(process.cwd(), "data", "person-reference");
 
@@ -58,13 +58,25 @@ function writePersonsToFile(persons: Map<string, Person>): void {
   fs.writeFileSync(PERSONS_FILE, data, "utf-8");
 }
 
-let personsCache: Map<string, Person> | null = null;
+/** Turbopack / 路由分包可能加载多份本模块，模块级 `let` 缓存会不一致；用 globalThis 与 Next 里 Prisma 单例同理。 */
+type PersonStoreGlobal = typeof globalThis & {
+  __dreamcupPersonsCache?: Map<string, Person>;
+};
+
+function getPersonsMap(): Map<string, Person> {
+  const g = globalThis as PersonStoreGlobal;
+  if (!g.__dreamcupPersonsCache) {
+    g.__dreamcupPersonsCache = readPersonsFromFile();
+  }
+  return g.__dreamcupPersonsCache;
+}
+
+function setPersonsMap(map: Map<string, Person>): void {
+  (globalThis as PersonStoreGlobal).__dreamcupPersonsCache = map;
+}
 
 function getPersons(): Map<string, Person> {
-  if (!personsCache) {
-    personsCache = readPersonsFromFile();
-  }
-  return personsCache;
+  return getPersonsMap();
 }
 
 export function getAllPersons(): Person[] {
@@ -100,7 +112,7 @@ export function findPersonForCharacter(character: Character): Person | undefined
 export function createPerson(person: Person): Person {
   const persons = getPersons();
   persons.set(person.id, person);
-  personsCache = persons;
+  setPersonsMap(persons);
   writePersonsToFile(persons);
   return person;
 }
@@ -117,7 +129,7 @@ export function updatePerson(id: string, updates: Partial<Person>): Person | nul
   }
   const updated = { ...person, ...updates, updatedAt: new Date().toISOString() };
   persons.set(id, updated);
-  personsCache = persons;
+  setPersonsMap(persons);
   writePersonsToFile(persons);
   return updated;
 }
@@ -130,10 +142,29 @@ export function deletePerson(id: string): boolean {
     if (existing?.referenceImageFilename) {
       deletePersonReferenceFile(existing.referenceImageFilename);
     }
-    personsCache = persons;
+    setPersonsMap(persons);
     writePersonsToFile(persons);
   }
   return result;
+}
+
+/** 根据梦境 structured.characters 更新人物库（新建或合并出现次数）。 */
+export function syncPersonsFromDream(dream: Dream, lastSeen?: string): void {
+  const seenAt = lastSeen ?? dream.updatedAt ?? dream.createdAt;
+  for (const char of dream.structured?.characters ?? []) {
+    const personName = (char.name || char.identity || "").trim();
+    if (!personName) continue;
+    try {
+      upsertPersonFromDream(
+        personName,
+        char.relationship?.trim(),
+        dream.id,
+        seenAt
+      );
+    } catch (err) {
+      console.error("syncPersonsFromDream:", personName, err);
+    }
+  }
 }
 
 export function upsertPersonFromDream(
@@ -178,6 +209,7 @@ export function upsertPersonFromDream(
 }
 
 export function clearAllPersons(): void {
-  personsCache = new Map();
-  writePersonsToFile(personsCache);
+  const empty = new Map<string, Person>();
+  setPersonsMap(empty);
+  writePersonsToFile(empty);
 }

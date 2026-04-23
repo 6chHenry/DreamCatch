@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getDreamById, updateDream, deleteDream } from "@/lib/dream-store";
+import { syncPersonsFromDream } from "@/lib/person-store";
 
 export async function GET(
   _request: NextRequest,
@@ -23,6 +24,9 @@ export async function PATCH(
     const updated = updateDream(id, body);
     if (!updated) {
       return NextResponse.json({ error: "Dream not found" }, { status: 404 });
+    }
+    if (updated.structured?.characters?.length) {
+      syncPersonsFromDream(updated, updated.updatedAt);
     }
     return NextResponse.json(updated);
   } catch (error) {

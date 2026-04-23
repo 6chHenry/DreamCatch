@@ -34,13 +34,24 @@ function writeDreamsToFile(dreams: Map<string, Dream>): void {
   fs.writeFileSync(DREAMS_FILE, data, "utf-8");
 }
 
-let dreamsCache: Map<string, Dream> | null = null;
+type DreamStoreGlobal = typeof globalThis & {
+  __dreamcupDreamsCache?: Map<string, Dream>;
+};
+
+function getDreamsMap(): Map<string, Dream> {
+  const g = globalThis as DreamStoreGlobal;
+  if (!g.__dreamcupDreamsCache) {
+    g.__dreamcupDreamsCache = readDreamsFromFile();
+  }
+  return g.__dreamcupDreamsCache;
+}
+
+function setDreamsMap(map: Map<string, Dream>): void {
+  (globalThis as DreamStoreGlobal).__dreamcupDreamsCache = map;
+}
 
 function getDreams(): Map<string, Dream> {
-  if (!dreamsCache) {
-    dreamsCache = readDreamsFromFile();
-  }
-  return dreamsCache;
+  return getDreamsMap();
 }
 
 export function getAllDreams(): Dream[] {
@@ -56,7 +67,7 @@ export function getDreamById(id: string): Dream | undefined {
 export function createDream(dream: Dream): Dream {
   const dreams = getDreams();
   dreams.set(dream.id, dream);
-  dreamsCache = dreams;
+  setDreamsMap(dreams);
   writeDreamsToFile(dreams);
   return dream;
 }
@@ -67,7 +78,7 @@ export function updateDream(id: string, updates: Partial<Dream>): Dream | null {
   if (!dream) return null;
   const updated = { ...dream, ...updates, updatedAt: new Date().toISOString() };
   dreams.set(id, updated);
-  dreamsCache = dreams;
+  setDreamsMap(dreams);
   writeDreamsToFile(dreams);
   return updated;
 }
@@ -76,13 +87,14 @@ export function deleteDream(id: string): boolean {
   const dreams = getDreams();
   const result = dreams.delete(id);
   if (result) {
-    dreamsCache = dreams;
+    setDreamsMap(dreams);
     writeDreamsToFile(dreams);
   }
   return result;
 }
 
 export function clearAllDreams(): void {
-  dreamsCache = new Map();
-  writeDreamsToFile(dreamsCache);
+  const empty = new Map<string, Dream>();
+  setDreamsMap(empty);
+  writeDreamsToFile(empty);
 }

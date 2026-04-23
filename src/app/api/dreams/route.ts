@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { v4 as uuidv4 } from "uuid";
 import { getAllDreams, createDream } from "@/lib/dream-store";
-import { upsertPersonFromDream } from "@/lib/person-store";
+import { syncPersonsFromDream } from "@/lib/person-store";
 import type { Dream } from "@/types/dream";
 
 export async function GET() {
@@ -39,21 +39,7 @@ export async function POST(request: NextRequest) {
     createDream(dream);
 
     if (dream.structured.characters?.length > 0) {
-      for (const char of dream.structured.characters) {
-        const personName = char.name || char.identity;
-        if (personName && personName.trim()) {
-          try {
-            upsertPersonFromDream(
-              personName.trim(),
-              char.relationship,
-              dream.id,
-              dream.createdAt
-            );
-          } catch (err) {
-            console.error("Failed to upsert person:", personName, err);
-          }
-        }
-      }
+      syncPersonsFromDream(dream, dream.createdAt);
     }
 
     return NextResponse.json(dream, { status: 201 });

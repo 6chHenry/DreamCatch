@@ -4,7 +4,9 @@ import type { Person } from "@/types/dream";
 
 export async function GET() {
   const persons = getAllPersons();
-  return NextResponse.json(persons);
+  return NextResponse.json(persons, {
+    headers: { "Cache-Control": "private, no-store, max-age=0" },
+  });
 }
 
 export async function POST(request: NextRequest) {
