@@ -1,4 +1,6 @@
-**掬梦（DreamCup）** — 多模态 AI 梦境记录与可视化；本仓库为 Next.js 应用。
+**掬梦（DreamCup）** — 多模态 AI 梦境记录与可视化
+
+![DreamCup](figures/DreamCup_banner.png)
 
 ---
 
