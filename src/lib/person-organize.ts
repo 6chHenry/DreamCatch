@@ -1,5 +1,5 @@
 import type { Character, Dream, Person } from "@/types/dream";
-import { getAllDreams, updateDream } from "@/lib/dream-store";
+import { getAllDreamRecords, updateDream } from "@/lib/dream-store";
 import {
   deletePerson,
   deletePersonReferenceFile,
@@ -138,7 +138,7 @@ export function applyDreamPatchesForOrganize(
   replaceMap: Map<string, string>
 ): number {
   let n = 0;
-  for (const dream of getAllDreams()) {
+  for (const dream of getAllDreamRecords()) {
     const patched = patchDreamForOrganize(dream, removeNames, replaceMap);
     if (patched) {
       updateDream(dream.id, { structured: patched.structured });

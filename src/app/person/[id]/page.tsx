@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { Moon, ArrowLeft, Users, Calendar, Link2, ImagePlus, Trash2, Loader2, Pencil, X } from "lucide-react";
 import type { Person, Dream } from "@/types/dream";
+import { formatJournalDateZh } from "@/lib/dream-dates";
 import { messageFromErrorResponse } from "@/lib/llm-utils";
 
 export default function PersonDetailPage() {
@@ -435,7 +436,7 @@ export default function PersonDetailPage() {
                     </div>
                     <div className="shrink-0 text-right">
                       <span className="text-[10px] text-white/20">
-                        {new Date(dream.createdAt).toLocaleDateString("zh-CN")}
+                        {formatJournalDateZh(dream)}
                       </span>
                       {dream.scenes.filter((s) => s.imageUrl).length > 0 && (
                         <div className="mt-1 w-16 h-10 rounded overflow-hidden">

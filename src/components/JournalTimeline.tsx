@@ -1,14 +1,24 @@
 "use client";
 
 import type { Dream } from "@/types/dream";
+import { getDreamJournalGroupLabel } from "@/lib/dream-dates";
 import DreamCard from "./DreamCard";
 
 interface JournalTimelineProps {
   dreams: Dream[];
   onDreamClick: (dream: Dream) => void;
+  selectionMode?: boolean;
+  selectedIds?: Set<string>;
+  onToggleSelect?: (dream: Dream) => void;
 }
 
-export default function JournalTimeline({ dreams, onDreamClick }: JournalTimelineProps) {
+export default function JournalTimeline({
+  dreams,
+  onDreamClick,
+  selectionMode = false,
+  selectedIds,
+  onToggleSelect,
+}: JournalTimelineProps) {
   if (dreams.length === 0) {
     return (
       <div className="text-center py-20 text-white/30">
@@ -20,11 +30,7 @@ export default function JournalTimeline({ dreams, onDreamClick }: JournalTimelin
 
   const groupedByDate = dreams.reduce(
     (acc, dream) => {
-      const date = new Date(dream.createdAt).toLocaleDateString("zh-CN", {
-        year: "numeric",
-        month: "long",
-        day: "numeric",
-      });
+      const date = getDreamJournalGroupLabel(dream);
       if (!acc[date]) acc[date] = [];
       acc[date].push(dream);
       return acc;
@@ -43,7 +49,14 @@ export default function JournalTimeline({ dreams, onDreamClick }: JournalTimelin
           </div>
           <div className="grid gap-4 md:grid-cols-2">
             {dateDreams.map((dream) => (
-              <DreamCard key={dream.id} dream={dream} onClick={onDreamClick} />
+              <DreamCard
+                key={dream.id}
+                dream={dream}
+                onClick={onDreamClick}
+                selectionMode={selectionMode}
+                selected={Boolean(selectedIds?.has(dream.id))}
+                onToggleSelect={onToggleSelect}
+              />
             ))}
           </div>
         </div>

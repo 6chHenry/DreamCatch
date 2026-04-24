@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getAllDreams, updateDream } from "@/lib/dream-store";
+import { getAllDreamRecords, updateDream } from "@/lib/dream-store";
 import { DREAM_TITLE_SYSTEM_PROMPT, DREAM_TITLE_USER_PROMPT } from "@/lib/prompt-templates";
 import { buildLLMRequestBody } from "@/lib/llm-request";
 import { parseLLMJson } from "@/lib/llm-utils";
@@ -72,7 +72,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "LLM API 未配置" }, { status: 500 });
   }
 
-  const allDreams = getAllDreams();
+  const allDreams = getAllDreamRecords();
   const targets = dreamId ? allDreams.filter((d) => d.id === dreamId) : allDreams;
 
   if (targets.length === 0) {

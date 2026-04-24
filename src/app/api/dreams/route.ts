@@ -33,6 +33,7 @@ export async function POST(request: NextRequest) {
       sceneRenderPrompts: body.sceneRenderPrompts,
       videoUrl: body.videoUrl,
       aiInterpretation: body.aiInterpretation,
+      userNotes: body.userNotes,
       createdAt: body.createdAt || new Date().toISOString(),
       updatedAt: body.updatedAt || new Date().toISOString(),
     };

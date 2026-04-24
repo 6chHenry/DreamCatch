@@ -115,6 +115,10 @@ export interface Dream {
   videoUrl?: string;
   /** 详情页「AI 梦境解读」生成后持久化 */
   aiInterpretation?: string;
+  /** 若存在：仅从日志列表隐藏，**不**从 data/dreams.json 删除正文与图片等数据 */
+  deletedAt?: string;
+  /** 用户随手记的感想/备注，与 AI 解读分开 */
+  userNotes?: string;
   createdAt: string;
   updatedAt: string;
 }

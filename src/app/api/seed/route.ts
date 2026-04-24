@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { v4 as uuidv4 } from "uuid";
-import { createDream, clearAllDreams, getAllDreams } from "@/lib/dream-store";
+import { createDream, clearAllDreams, getAllDreamRecords } from "@/lib/dream-store";
 import type { Dream } from "@/types/dream";
 
 const MOCK_DREAMS: Omit<Dream, "id">[] = [
@@ -331,7 +331,7 @@ export async function DELETE() {
 }
 
 export async function GET() {
-  const allDreams = getAllDreams();
+  const allDreams = getAllDreamRecords();
   return NextResponse.json({
     count: allDreams.length,
     dreams: allDreams,

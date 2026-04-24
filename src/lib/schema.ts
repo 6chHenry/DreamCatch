@@ -175,6 +175,8 @@ export const DreamSchema = z.object({
   sceneRenderPrompts: z.array(DreamScenePromptSchema).optional(),
   videoUrl: z.string().optional(),
   aiInterpretation: z.string().optional(),
+  userNotes: z.string().optional(),
+  deletedAt: z.string().optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });

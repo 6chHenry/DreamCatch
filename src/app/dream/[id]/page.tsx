@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, type ChangeEvent } from "react";
 import { useParams, useRouter } from "next/navigation";
 import {
   Moon,
@@ -21,8 +21,14 @@ import {
   Video,
   Play,
   Brain,
+  Calendar,
 } from "lucide-react";
 import type { Dream, DreamSceneImage } from "@/types/dream";
+import {
+  dreamToDateInputValue,
+  formatJournalDateZh,
+  getDreamJournalSortTime,
+} from "@/lib/dream-dates";
 import { messageFromErrorResponse } from "@/lib/llm-utils";
 import {
   LLM_MODEL_OPTIONS,
@@ -81,7 +87,7 @@ function initDrafts(dream: Dream): Record<number, string> {
 
 /** 默认 ZIP 名：dream_{YYYYMMDD}_{标题}.zip */
 function dreamZipFilename(dream: Dream): string {
-  const d = new Date(dream.createdAt);
+  const d = new Date(getDreamJournalSortTime(dream));
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, "0");
   const day = String(d.getDate()).padStart(2, "0");
@@ -120,6 +126,7 @@ export default function DreamDetailPage() {
   // video generation
   const [generatingVideo, setGeneratingVideo] = useState(false);
   const [videoError, setVideoError] = useState<string | null>(null);
+  const [restoreToJournalBusy, setRestoreToJournalBusy] = useState(false);
 
   // AI 梦境解读（寓意 / 象征）
   const [interpretModel, setInterpretModel] = useState(DEFAULT_LLM_MODEL);
@@ -127,6 +134,9 @@ export default function DreamDetailPage() {
   const [interpretLoading, setInterpretLoading] = useState(false);
   const [interpretText, setInterpretText] = useState<string | null>(null);
   const [interpretError, setInterpretError] = useState<string | null>(null);
+
+  const [notesDraft, setNotesDraft] = useState("");
+  const [savingJournalMeta, setSavingJournalMeta] = useState(false);
 
   useEffect(() => {
     setInterpretModel(readStoredLlmModel());
@@ -137,6 +147,11 @@ export default function DreamDetailPage() {
     const saved = dream.aiInterpretation?.trim();
     setInterpretText(saved || null);
   }, [dream?.id, dream?.aiInterpretation]);
+
+  useEffect(() => {
+    if (!dream) return;
+    setNotesDraft(dream.userNotes ?? "");
+  }, [dream?.id, dream?.userNotes]);
 
   const fetchDream = useCallback(async (id: string) => {
     try {
@@ -178,6 +193,43 @@ export default function DreamDetailPage() {
     },
     []
   );
+
+  const handleJournalDateChange = async (e: ChangeEvent<HTMLInputElement>) => {
+    if (!dream) return;
+    const v = e.target.value;
+    setSavingJournalMeta(true);
+    try {
+      const meta = { ...dream.structured.meta };
+      if (v) meta.dreamDate = v;
+      else delete meta.dreamDate;
+      const structured = { ...dream.structured, meta };
+      const res = await fetch(`/api/dreams/${dream.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ structured }),
+      });
+      if (res.ok) setDream((await res.json()) as Dream);
+    } finally {
+      setSavingJournalMeta(false);
+    }
+  };
+
+  const handleSaveUserNotes = async () => {
+    if (!dream) return;
+    const trimmed = notesDraft.trim();
+    if (trimmed === (dream.userNotes ?? "").trim()) return;
+    setSavingJournalMeta(true);
+    try {
+      const res = await fetch(`/api/dreams/${dream.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userNotes: trimmed || "" }),
+      });
+      if (res.ok) setDream((await res.json()) as Dream);
+    } finally {
+      setSavingJournalMeta(false);
+    }
+  };
 
   const handleDreamInterpret = async () => {
     if (!dream) return;
@@ -439,12 +491,36 @@ export default function DreamDetailPage() {
 
   const cancelTitleEdit = () => setEditingTitle(false);
 
+  const handleRestoreToJournal = async () => {
+    if (!dream?.deletedAt) return;
+    setRestoreToJournalBusy(true);
+    try {
+      const res = await fetch(`/api/dreams/${dream.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ showInJournal: true }),
+      });
+      if (res.ok) {
+        setDream((await res.json()) as Dream);
+      }
+    } catch (e) {
+      console.error("Restore to journal error:", e);
+    } finally {
+      setRestoreToJournalBusy(false);
+    }
+  };
+
   const handleExportMarkdown = async () => {
     if (!dream) return;
 
     const md = `# ${dream.title}
 
-**日期**: ${new Date(dream.createdAt).toLocaleDateString("zh-CN")}
+**日期**: ${formatJournalDateZh(dream)}${dream.userNotes?.trim() ? `
+
+## 我的感想
+
+${dream.userNotes.trim()}
+` : ""}
 
 ## 原始口述
 
@@ -604,9 +680,59 @@ ${dream.structured.anomalies.map((a) => `- ${a.description} [${a.type}]`).join("
       </header>
 
       <main className="flex-1 px-6 py-8 max-w-4xl mx-auto w-full space-y-10">
-        <div className="text-sm text-white/30">
-          {new Date(dream.createdAt).toLocaleString("zh-CN")}
+        <div className="rounded-xl border border-white/10 bg-white/[0.02] p-4 sm:p-5 space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
+            <label className="flex items-center gap-2 text-sm font-medium text-white/70 shrink-0">
+              <Calendar size={15} className="text-indigo-400/90 shrink-0" />
+              梦境日期
+            </label>
+            <div className="flex items-center gap-2 flex-wrap">
+              <input
+                type="date"
+                value={dreamToDateInputValue(dream)}
+                onChange={handleJournalDateChange}
+                disabled={savingJournalMeta}
+                className="rounded-lg border border-white/15 bg-white/5 px-3 py-1.5 text-sm text-white/85 focus:outline-none focus:border-indigo-500/40 disabled:opacity-50"
+              />
+              {savingJournalMeta && (
+                <Loader2 size={14} className="animate-spin text-indigo-400" aria-hidden />
+              )}
+            </div>
+            <p className="text-xs text-white/35 sm:ml-auto">
+              记录于 {new Date(dream.createdAt).toLocaleString("zh-CN", { hour12: false })}
+            </p>
+          </div>
+          <div className="space-y-2">
+            <h3 className="text-sm font-medium text-white/60">我的感想</h3>
+            <textarea
+              value={notesDraft}
+              onChange={(e) => setNotesDraft(e.target.value)}
+              onBlur={handleSaveUserNotes}
+              placeholder="醒来后的随想、联想或想记住的一句话…"
+              rows={4}
+              disabled={savingJournalMeta}
+              className="w-full rounded-lg border border-white/10 bg-black/20 px-3 py-2.5 text-sm text-white/80 placeholder:text-white/25 focus:outline-none focus:border-indigo-500/30 resize-y min-h-[5.5rem] disabled:opacity-50"
+            />
+            <p className="text-xs text-white/30">失焦时自动保存；与下方「AI 梦境解读」内容独立。</p>
+          </div>
         </div>
+
+        {dream.deletedAt && (
+          <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <p className="text-sm text-amber-100/90 leading-relaxed">
+              此条已从「梦境日志」列表隐藏；正文、场景图、视频等仍完整保存在本地{" "}
+              <span className="text-amber-200/80">data/dreams.json</span>，未从磁盘删除。
+            </p>
+            <button
+              type="button"
+              onClick={handleRestoreToJournal}
+              disabled={restoreToJournalBusy}
+              className="shrink-0 px-4 py-2 rounded-lg bg-amber-500/25 hover:bg-amber-500/35 text-sm text-amber-100 border border-amber-500/35 disabled:opacity-50"
+            >
+              {restoreToJournalBusy ? "处理中…" : "恢复在日志中显示"}
+            </button>
+          </div>
+        )}
 
         {dream.audioFileName && (
           <AudioPlayer src={`/api/audio/${dream.audioFileName}`} label="梦境录音" />

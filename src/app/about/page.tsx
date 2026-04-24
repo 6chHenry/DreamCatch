@@ -96,7 +96,44 @@ export default function AboutPage() {
               去记录梦境 <span aria-hidden>→</span>
             </Link>
           </section>
+
+          <section className="space-y-3 pt-2">
+            <h3 className="text-sm font-medium text-white/85">联系我</h3>
+            <p className="text-white/50">欢迎来 GitHub 上交流或提 issue。</p>
+            <a
+              href="https://github.com/6chHenry"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-2.5 text-sm text-indigo-300/95 hover:text-indigo-200 transition-colors"
+            >
+              <span className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-white/10 text-white/90 hover:bg-white/15">
+                <svg
+                  className="h-5 w-5"
+                  viewBox="0 0 24 24"
+                  fill="currentColor"
+                  aria-hidden
+                >
+                  <path d="M12 0C5.37 0 0 5.37 0 12c0 5.3 3.438 9.8 8.207 11.385.6.11.793-.26.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.09-.745.083-.73.083-.73 1.204.085 1.84 1.236 1.84 1.236 1.07 1.835 2.807 1.304 3.492.998.108-.776.417-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.93 0-1.31.47-2.38 1.235-3.22-.123-.304-.535-1.524.116-3.176 0 0 1.007-.32 3.3 1.23.957-.266 1.98-.4 3.001-.404 1.02.005 2.047.138 3.006.404 2.29-1.55 3.295-1.23 3.295-1.23.655 1.653.24 2.872.12 3.175.77.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.48 5.92.43.37.81 1.1.81 2.22v3.29c0 .32.19.69.8.57C20.565 22.095 24 17.592 24 12c0-6.63-5.37-12-12-12z" />
+                </svg>
+              </span>
+              <span>6chHenry</span>
+            </a>
+          </section>
         </div>
+
+        <footer className="mt-12 pt-8 border-t border-white/10">
+          <p className="text-xs text-white/40">
+            开源仓库：{" "}
+            <a
+              href="https://github.com/6chHenry/DreamCup"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-indigo-400/90 hover:text-indigo-300 underline underline-offset-2"
+            >
+              github.com/6chHenry/DreamCup
+            </a>
+          </p>
+        </footer>
       </main>
     </div>
   );

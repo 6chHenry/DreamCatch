@@ -1,6 +1,7 @@
 import fs from "fs";
 import path from "path";
 import type { Dream } from "@/types/dream";
+import { getDreamJournalSortTime } from "@/lib/dream-dates";
 
 const DATA_DIR = path.join(process.cwd(), "data");
 const DREAMS_FILE = path.join(DATA_DIR, "dreams.json");
@@ -54,9 +55,23 @@ function getDreams(): Map<string, Dream> {
   return getDreamsMap();
 }
 
+/** 日志列表、GET /api/dreams：不含已从列表隐藏的条目 */
 export function getAllDreams(): Dream[] {
+  return Array.from(getDreams().values())
+    .filter((d) => !d.deletedAt)
+    .sort(
+      (a, b) =>
+        getDreamJournalSortTime(b) - getDreamJournalSortTime(a) ||
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    );
+}
+
+/** 含已隐藏条目（人物整理改名、批量重命名等需扫全量记录） */
+export function getAllDreamRecords(): Dream[] {
   return Array.from(getDreams().values()).sort(
-    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    (a, b) =>
+      getDreamJournalSortTime(b) - getDreamJournalSortTime(a) ||
+      new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
   );
 }
 
@@ -83,6 +98,7 @@ export function updateDream(id: string, updates: Partial<Dream>): Dream | null {
   return updated;
 }
 
+/** 从磁盘彻底移除条目（仅用于维护脚本等；日志「删除」请用软删除 deletedAt） */
 export function deleteDream(id: string): boolean {
   const dreams = getDreams();
   const result = dreams.delete(id);
@@ -91,6 +107,19 @@ export function deleteDream(id: string): boolean {
     writeDreamsToFile(dreams);
   }
   return result;
+}
+
+/** 取消「从日志隐藏」，重新出现在列表中 */
+export function unhideDreamFromJournal(id: string): Dream | null {
+  const dreams = getDreams();
+  const dream = dreams.get(id);
+  if (!dream?.deletedAt) return dream ?? null;
+  const { deletedAt: _removed, ...rest } = dream;
+  const updated: Dream = { ...rest, updatedAt: new Date().toISOString() };
+  dreams.set(id, updated);
+  setDreamsMap(dreams);
+  writeDreamsToFile(dreams);
+  return updated;
 }
 
 export function clearAllDreams(): void {
