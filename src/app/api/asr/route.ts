@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import fs from "fs";
 import path from "path";
+import { llmFetch } from "@/lib/llm-fetch";
 import { shouldTranscodeToWavForDoubao, transcodeBufferToWavPcm16kMono } from "@/lib/audio-convert";
 
 export const runtime = "nodejs";
@@ -221,7 +222,7 @@ async function geminiASR(buffer: Buffer, ext: string) {
   const mimeType =
     ext === "webm" ? "audio/webm" : ext === "mp3" ? "audio/mp3" : ext === "ogg" ? "audio/ogg" : "audio/wav";
 
-  const response = await fetch(`${apiUrl}/chat/completions`, {
+  const response = await llmFetch(`${apiUrl}/chat/completions`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",

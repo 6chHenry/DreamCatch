@@ -1,24 +1,35 @@
 import fs from "fs";
 import { NextRequest, NextResponse } from "next/server";
+import { llmFetch } from "@/lib/llm-fetch";
 import { DREAM_RENDER_PROMPT_SYSTEM, DREAM_RENDER_PROMPT_USER } from "@/lib/prompt-templates";
 import { parseLLMJson } from "@/lib/llm-utils";
 import { buildLLMRequestBody, resolveOpenAICompatLLM } from "@/lib/llm-request";
 import { pickReferencePersonForScene } from "@/lib/person-reference-match";
 import { findPersonForCharacter, personReferenceFilePath } from "@/lib/person-store";
-import type { DreamStructured } from "@/types/dream";
+import type { DreamStructured, StyleGuide } from "@/types/dream";
 import { generateGptImage2SceneImage } from "@/lib/gpt-image-generate";
-import { DEFAULT_SCENE_IMAGE_MODEL, parseSceneImageModelId, type SceneImageModelId } from "@/lib/scene-image-model";
+import {
+  DEFAULT_SCENE_IMAGE_MODEL,
+  isGptImage2PipelineModel,
+  parseSceneImageModelId,
+  type SceneImageModelId,
+} from "@/lib/scene-image-model";
 
 export const runtime = "nodejs";
 
 export type ScenePromptPayload = { sceneIndex: number; prompts: string[] };
+
+type PromptsWithStyleGuide = {
+  scenePrompts: ScenePromptPayload[];
+  styleGuide: StyleGuide;
+};
 
 async function generateScenePromptsWithLLM(
   dreamStructured: DreamStructured,
   apiUrl: string,
   apiKey: string,
   model: string
-): Promise<ScenePromptPayload[]> {
+): Promise<PromptsWithStyleGuide> {
   const requestBody = buildLLMRequestBody(
     model,
     [
@@ -28,7 +39,7 @@ async function generateScenePromptsWithLLM(
     { temperature: 0.7, responseFormat: { type: "json_object" } }
   );
 
-  const promptResponse = await fetch(`${apiUrl}/chat/completions`, {
+  const promptResponse = await llmFetch(`${apiUrl}/chat/completions`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -50,7 +61,43 @@ async function generateScenePromptsWithLLM(
     throw new Error("Empty prompt response from LLM");
   }
 
-  return parseLLMJson(promptsContent) as ScenePromptPayload[];
+  const parsed = parseLLMJson(promptsContent) as Record<string, unknown> | ScenePromptPayload[];
+
+  // Support both old array format and new {styleGuide, scenes} object format
+  if (Array.isArray(parsed)) {
+    return { scenePrompts: parsed as ScenePromptPayload[], styleGuide: {} };
+  }
+  const scenesRaw = parsed.scenes ?? parsed;
+  return {
+    scenePrompts: (Array.isArray(scenesRaw) ? scenesRaw : []) as ScenePromptPayload[],
+    styleGuide: (parsed.styleGuide as StyleGuide) ?? {},
+  };
+}
+
+/**
+ * Builds a consistency prefix block from the style guide to prepend to every
+ * scene image prompt, ensuring cross-scene visual coherence.
+ */
+function buildStyleGuidePrefix(styleGuide: StyleGuide): string {
+  const parts: string[] = [];
+
+  const styleParts: string[] = [];
+  if (styleGuide.artStyle) styleParts.push(styleGuide.artStyle);
+  if (styleGuide.colorPalette) styleParts.push(`主色调：${styleGuide.colorPalette}`);
+  if (styleGuide.moodKeywords) styleParts.push(`氛围：${styleGuide.moodKeywords}`);
+  if (styleParts.length > 0) {
+    parts.push(`【梦境画风】${styleParts.join("；")}。`);
+  }
+
+  const anchors = styleGuide.characterAnchors;
+  if (anchors && Object.keys(anchors).length > 0) {
+    const charParts = Object.entries(anchors)
+      .map(([name, desc]) => `${name}：${desc}`)
+      .join("；");
+    parts.push(`【人物造型锚定】${charParts}。`);
+  }
+
+  return parts.join("\n");
 }
 
 function parseImageGenerationResponse(data: {
@@ -93,7 +140,7 @@ async function grokImageFetch(url: string, init: RequestInit, logLabel: string):
   let lastStatus = 500;
   let lastText = "";
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
-    const res = await fetch(url, init);
+    const res = await llmFetch(url, init);
     lastStatus = res.status;
     if (res.ok) return res;
     lastText = await res.text();
@@ -111,7 +158,9 @@ async function grokImageFetch(url: string, init: RequestInit, logLabel: string):
 async function generateSceneImagesFromPrompts(
   scenePrompts: ScenePromptPayload[],
   dreamStructured: DreamStructured,
-  imageModel: SceneImageModelId
+  imageModel: SceneImageModelId,
+  batch?: { offset: number; size: number },
+  styleGuide?: StyleGuide
 ): Promise<
   Array<{
     sceneIndex: number;
@@ -131,6 +180,14 @@ async function generateSceneImagesFromPrompts(
   const scenes = dreamStructured.scenes || [];
   const characters = dreamStructured.characters || [];
 
+  const promptsToRun =
+    batch != null
+      ? scenePrompts.slice(
+          Math.max(0, batch.offset),
+          Math.max(0, batch.offset) + Math.max(1, batch.size)
+        )
+      : scenePrompts;
+
   const sceneImages: Array<{
     sceneIndex: number;
     imageUrl: string;
@@ -138,11 +195,11 @@ async function generateSceneImagesFromPrompts(
     error?: string;
   }> = [];
 
-  let didGeneratePriorScene = false;
+  let didGeneratePriorScene = batch != null && batch.offset > 0;
   const gapMsRaw = Number(process.env.GROK_IMAGE_SCENE_GAP_MS);
   const sceneGapMs = Number.isFinite(gapMsRaw) && gapMsRaw >= 0 ? gapMsRaw : 2800;
 
-  for (const scenePrompt of scenePrompts) {
+  for (const scenePrompt of promptsToRun) {
     const prompt = scenePrompt.prompts[0];
     if (!prompt) continue;
 
@@ -166,12 +223,14 @@ async function generateSceneImagesFromPrompts(
       }
     }
 
+    const stylePrefix = styleGuide ? buildStyleGuidePrefix(styleGuide) : "";
+    const promptWithStyle = stylePrefix ? `${stylePrefix}\n${prompt}` : prompt;
     const promptFinal = refBase64
-      ? `【人物一致性】请与参考图中人物面部与体态保持一致；其余按场景描述作画。\n${prompt}`
-      : prompt;
+      ? `【参考图人物一致性】请与参考图中人物面部与体态保持一致；其余按场景描述作画。\n${promptWithStyle}`
+      : promptWithStyle;
 
     try {
-      if (imageModel === "gpt-image-2") {
+      if (isGptImage2PipelineModel(imageModel)) {
         const gptBase =
           process.env.GPT_IMAGE2_API_URL?.replace(/\/$/, "") ||
           process.env.OPENCLAUDECODE_API_URL?.replace(/\/$/, "") ||
@@ -191,6 +250,7 @@ async function generateSceneImagesFromPrompts(
             apiKey: gptKey,
             prompt: promptFinal,
             refPngBuffer: refBuf,
+            model: imageModel,
           });
           if ("error" in gptResult) {
             sceneImages.push({
@@ -337,6 +397,11 @@ export async function POST(request: NextRequest) {
       phase?: "prompts" | "images";
       scenePrompts?: ScenePromptPayload[];
       imageModel?: string;
+      /** 全局视觉风格锚点，由 prompts 阶段返回，images 阶段传入以注入一致性前缀 */
+      styleGuide?: StyleGuide;
+      /** 与 imageBatchSize 同时传入时只生成本批；不传则一次生成全部 */
+      imageBatchOffset?: number;
+      imageBatchSize?: number;
     };
 
     const {
@@ -344,6 +409,7 @@ export async function POST(request: NextRequest) {
       phase = "prompts",
       scenePrompts: incomingScenePrompts,
       imageModel: imageModelRaw,
+      styleGuide: incomingStyleGuide,
     } = body;
     const imageModel = parseSceneImageModelId(imageModelRaw) ?? DEFAULT_SCENE_IMAGE_MODEL;
 
@@ -356,16 +422,38 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: "缺少 scenePrompts" }, { status: 400 });
       }
 
+      let batch: { offset: number; size: number } | undefined;
+      const rawSize = body.imageBatchSize;
+      if (typeof rawSize === "number" && Number.isFinite(rawSize) && rawSize > 0) {
+        const off = Math.max(0, Math.floor(Number(body.imageBatchOffset) || 0));
+        batch = { offset: off, size: Math.min(Math.floor(rawSize), 32) };
+      }
+
       try {
         const sceneImages = await generateSceneImagesFromPrompts(
           incomingScenePrompts,
           dreamStructured,
-          imageModel
+          imageModel,
+          batch,
+          incomingStyleGuide
         );
+        const total = incomingScenePrompts.length;
+        const imageBatch =
+          batch != null
+            ? {
+                offset: batch.offset,
+                size: batch.size,
+                total,
+                nextOffset: batch.offset + batch.size,
+                hasMore: batch.offset + batch.size < total,
+              }
+            : undefined;
+
         return NextResponse.json({
           status: "images_ready",
           scenePrompts: incomingScenePrompts,
           sceneImages,
+          ...(imageBatch ? { imageBatch } : {}),
         });
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
@@ -380,9 +468,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "LLM API not configured" }, { status: 500 });
     }
 
-    let scenePrompts: ScenePromptPayload[];
+    let promptsResult: PromptsWithStyleGuide;
     try {
-      scenePrompts = await generateScenePromptsWithLLM(dreamStructured, apiUrl, apiKey, model);
+      promptsResult = await generateScenePromptsWithLLM(dreamStructured, apiUrl, apiKey, model);
     } catch (e) {
       const detail = e instanceof Error ? e.message : String(e);
       return NextResponse.json({ error: "Prompt generation failed", detail }, { status: 500 });
@@ -390,7 +478,8 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       status: "prompts_ready",
-      scenePrompts,
+      scenePrompts: promptsResult.scenePrompts,
+      styleGuide: promptsResult.styleGuide,
       message: "提示词已生成，可在前端编辑后再一键生图",
     });
   } catch (error) {

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { llmFetch } from "@/lib/llm-fetch";
 import { DREAM_POLISH_SYSTEM_PROMPT, DREAM_POLISH_USER_PROMPT } from "@/lib/prompt-templates";
 import { buildLLMRequestBody, resolveOpenAICompatLLM } from "@/lib/llm-request";
 
@@ -39,7 +40,7 @@ export async function POST(request: NextRequest) {
 
     const requestBody = buildLLMRequestBody(model, messages, { temperature: 0.3 });
 
-    const response = await fetch(`${apiUrl}/chat/completions`, {
+    const response = await llmFetch(`${apiUrl}/chat/completions`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

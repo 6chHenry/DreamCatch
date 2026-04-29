@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { llmFetch } from "@/lib/llm-fetch";
 import { PERSON_ORGANIZE_SYSTEM_PROMPT, PERSON_ORGANIZE_USER_PROMPT } from "@/lib/prompt-templates";
 import { buildLLMRequestBody, resolveLlmPreferClientKeyElseOpenCodeGpt } from "@/lib/llm-request";
 import { parseLLMJson } from "@/lib/llm-utils";
@@ -89,7 +90,7 @@ export async function POST(request: NextRequest) {
       { temperature: 0.2, responseFormat: { type: "json_object" } }
     );
 
-    const res = await fetch(`${apiUrl.replace(/\/$/, "")}/chat/completions`, {
+    const res = await llmFetch(`${apiUrl.replace(/\/$/, "")}/chat/completions`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

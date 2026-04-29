@@ -105,6 +105,21 @@ export interface DreamScenePrompt {
   prompts: string[];
 }
 
+/**
+ * 全局视觉风格锚点，由 LLM 在生成场景提示词时同步产出。
+ * 在后端注入为每张图片 prompt 的前缀，确保整条梦境的画风、色调、人物外貌跨场景一致。
+ */
+export interface StyleGuide {
+  /** 整体画风，如"柔和水彩梦幻风格，笔触轻盈，光晕朦胧" */
+  artStyle?: string;
+  /** 全片色调方向，如"冷蓝紫主调，暖金点缀，低饱和度" */
+  colorPalette?: string;
+  /** 2～4 个氛围词，如"飘渺、宁静、轻盈" */
+  moodKeywords?: string;
+  /** key 为人物名/称呼，value 为其外貌与服装的固定描述，用于跨场景人物一致性 */
+  characterAnchors?: Record<string, string>;
+}
+
 export interface Dream {
   id: string;
   title: string;
@@ -115,6 +130,8 @@ export interface Dream {
   scenes: DreamSceneImage[];
   /** 各场景生图提示词（优先于 scenes[].promptUsed 展示多候选） */
   sceneRenderPrompts?: DreamScenePrompt[];
+  /** 生图时使用的全局视觉风格锚点，与 sceneRenderPrompts 同步保存 */
+  sceneStyleGuide?: StyleGuide;
   videoUrl?: string;
   /** 详情页「AI 梦境解读」生成后持久化 */
   aiInterpretation?: string;

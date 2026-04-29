@@ -52,6 +52,8 @@ type SceneImageApiRow = {
   error?: string;
 };
 
+const SCENE_IMAGE_BATCH_SIZE = 3;
+
 function mergeSceneResults(
   existing: DreamSceneImage[],
   incoming: SceneImageApiRow[]
@@ -185,6 +187,7 @@ export default function DreamDetailPage() {
           body: JSON.stringify({
             scenes: updatedDream.scenes,
             sceneRenderPrompts: updatedDream.sceneRenderPrompts,
+            sceneStyleGuide: updatedDream.sceneStyleGuide,
           }),
         });
       } catch (e) {
@@ -324,6 +327,7 @@ export default function DreamDetailPage() {
           phase: "images",
           scenePrompts: [{ sceneIndex, prompts: [prompt] }],
           imageModel: sceneImageModel,
+          styleGuide: dream.sceneStyleGuide ?? undefined,
         }),
       });
       if (!res.ok) throw new Error(await res.text());
@@ -365,30 +369,36 @@ export default function DreamDetailPage() {
 
       if (scenePrompts.length === 0) return;
 
-      const res = await fetch("/api/render", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          dreamStructured: dream.structured,
-          phase: "images",
-          scenePrompts,
-          imageModel: sceneImageModel,
-        }),
-      });
-      if (!res.ok) throw new Error(await res.text());
-      const result = (await res.json()) as { sceneImages?: SceneImageApiRow[] };
-      if (result.sceneImages) {
-        const newScenes = mergeSceneResults(dream.scenes, result.sceneImages);
-        // refresh all prompts
-        const existing = scenePrompts.map((sp) => ({
-          sceneIndex: sp.sceneIndex,
-          prompts: sp.prompts,
-        }));
-        const updated: Dream = { ...dream, scenes: newScenes, sceneRenderPrompts: existing };
-        setDream(updated);
-        setDirtyPrompts(new Set());
-        await persistDream(updated);
+      let nextDream = dream;
+      for (let offset = 0; offset < scenePrompts.length; offset += SCENE_IMAGE_BATCH_SIZE) {
+        const res = await fetch("/api/render", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            dreamStructured: dream.structured,
+            phase: "images",
+            scenePrompts,
+            imageModel: sceneImageModel,
+            styleGuide: dream.sceneStyleGuide ?? undefined,
+            imageBatchOffset: offset,
+            imageBatchSize: SCENE_IMAGE_BATCH_SIZE,
+          }),
+        });
+        if (!res.ok) throw new Error(await res.text());
+        const result = (await res.json()) as { sceneImages?: SceneImageApiRow[] };
+        if (result.sceneImages?.length) {
+          const newScenes = mergeSceneResults(nextDream.scenes, result.sceneImages);
+          const existing = scenePrompts.map((sp) => ({
+            sceneIndex: sp.sceneIndex,
+            prompts: sp.prompts,
+          }));
+          nextDream = { ...nextDream, scenes: newScenes, sceneRenderPrompts: existing };
+          setDream(nextDream);
+        }
       }
+
+      setDirtyPrompts(new Set());
+      await persistDream(nextDream);
     } catch (e) {
       console.error("Regen all error:", e);
     } finally {

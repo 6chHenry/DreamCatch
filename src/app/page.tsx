@@ -8,7 +8,7 @@ import VoiceRecorder from "@/components/VoiceRecorder";
 import ProbeChat from "@/components/ProbeChat";
 import AudioPlayer from "@/components/AudioPlayer";
 import { useDreamStore } from "@/stores/dream-store";
-import type { Dream, DreamFlowStep, ProbeMessage } from "@/types/dream";
+import type { Dream, DreamFlowStep, ProbeMessage, StyleGuide } from "@/types/dream";
 import { messageFromErrorResponse } from "@/lib/llm-utils";
 import {
   DEFAULT_SCENE_IMAGE_MODEL,
@@ -38,6 +38,17 @@ interface ScenePrompt {
   sceneIndex: number;
   description: string;
   prompts: string[];
+}
+
+const SCENE_IMAGE_BATCH_SIZE = 3;
+
+type SceneImageRow = { sceneIndex: number; imageUrl: string; prompt: string; error?: string };
+
+function mergeSceneImageRows(prev: SceneImageRow[], incoming: SceneImageRow[]): SceneImageRow[] {
+  const map = new Map<number, SceneImageRow>();
+  for (const r of prev) map.set(r.sceneIndex, r);
+  for (const r of incoming) map.set(r.sceneIndex, r);
+  return [...map.values()].sort((a, b) => a.sceneIndex - b.sceneIndex);
 }
 
 interface PolishMessage {
@@ -115,6 +126,7 @@ export default function Home() {
   const audioFileInputRef = useRef<HTMLInputElement>(null);
   const [probeComplete, setProbeComplete] = useState(false);
   const [scenePrompts, setScenePrompts] = useState<ScenePrompt[]>([]);
+  const [sceneStyleGuide, setSceneStyleGuide] = useState<StyleGuide | null>(null);
   const [sceneImages, setSceneImages] = useState<Array<{ sceneIndex: number; imageUrl: string; prompt: string; error?: string }>>([]);
   const [promptDraftsByScene, setPromptDraftsByScene] = useState<Record<number, string>>({});
   const [isLoadingPrompts, setIsLoadingPrompts] = useState(false);
@@ -483,6 +495,7 @@ export default function Home() {
           prompts: sp.prompts,
         }));
         setScenePrompts(mapped);
+        setSceneStyleGuide((result.styleGuide as StyleGuide) ?? null);
         const drafts: Record<number, string> = {};
         for (const sp of mapped) {
           drafts[sp.sceneIndex] = sp.prompts[0] || "";
@@ -510,22 +523,28 @@ export default function Home() {
           ...sp.prompts.slice(1),
         ],
       }));
-      const response = await fetch("/api/render", {
-        method: "POST",
-        headers: modelHeaders(),
-        body: JSON.stringify({
-          dreamStructured: currentDream.structured,
-          phase: "images",
-          scenePrompts: edited,
-          imageModel: sceneImageModel,
-        }),
-      });
-      if (!response.ok) {
-        throw new Error(await messageFromErrorResponse(response));
-      }
-      const result = await response.json();
-      if (result.sceneImages) {
-        setSceneImages(result.sceneImages);
+      setSceneImages([]);
+      for (let offset = 0; offset < edited.length; offset += SCENE_IMAGE_BATCH_SIZE) {
+        const response = await fetch("/api/render", {
+          method: "POST",
+          headers: modelHeaders(),
+          body: JSON.stringify({
+            dreamStructured: currentDream.structured,
+            phase: "images",
+            scenePrompts: edited,
+            imageModel: sceneImageModel,
+            styleGuide: sceneStyleGuide ?? undefined,
+            imageBatchOffset: offset,
+            imageBatchSize: SCENE_IMAGE_BATCH_SIZE,
+          }),
+        });
+        if (!response.ok) {
+          throw new Error(await messageFromErrorResponse(response));
+        }
+        const result = await response.json();
+        if (result.sceneImages) {
+          setSceneImages((prev) => mergeSceneImageRows(prev, result.sceneImages));
+        }
       }
     } catch (error) {
       console.error("Scene images error:", error);
@@ -577,6 +596,7 @@ export default function Home() {
             sceneIndex: sp.sceneIndex,
             prompts: sp.prompts,
           })),
+          sceneStyleGuide: sceneStyleGuide ?? undefined,
           scenes: sceneImages.map((img, i) => ({
             id: crypto.randomUUID(),
             sceneIndex: img.sceneIndex,
@@ -598,7 +618,7 @@ export default function Home() {
     if (audioBlobUrl) URL.revokeObjectURL(audioBlobUrl);
     reset();
     setTextInput(""); setShowTextInput(true); setProbeComplete(false);
-    setScenePrompts([]); setSceneImages([]); setPromptDraftsByScene({});
+    setScenePrompts([]); setSceneStyleGuide(null); setSceneImages([]); setPromptDraftsByScene({});
     setIsLoadingPrompts(false); setIsRenderingImages(false);
     setVideoPrompt(""); setVideoUrl(""); setIsGeneratingVideo(false);
     setAudioFileName("");
@@ -946,13 +966,16 @@ export default function Home() {
                   <Loader2 className="animate-spin text-white/40" size={40} />
                   <p className="text-white/50">正在生成场景提示词...</p>
                 </div>
-              ) : isRenderingImages ? (
-                <div className="flex flex-col items-center gap-4 py-12">
-                  <Loader2 className="animate-spin text-white/40" size={40} />
-                  <p className="text-white/50">正在生成场景图片...</p>
-                </div>
               ) : sceneImages.length > 0 ? (
                 <div className="space-y-6">
+                  {isRenderingImages && (
+                    <div className="flex items-center justify-center gap-2 rounded-[var(--radius-dream)] border border-white/[0.08] bg-white/[0.03] px-4 py-3 text-xs text-white/50">
+                      <Loader2 className="animate-spin shrink-0" size={16} />
+                      <span>
+                        正在生成场景图片…（已完成 {sceneImages.length} / {scenePrompts.length}）
+                      </span>
+                    </div>
+                  )}
                   {sceneImages.map((img) => (
                     <div key={img.sceneIndex} className="dream-surface-ghost overflow-hidden">
                       <div className="px-4 py-3 border-b border-white/5 bg-white/[0.02]">
@@ -973,12 +996,18 @@ export default function Home() {
                   ))}
                   <button
                     onClick={handleGenerateVideo}
-                    className="btn-dream-primary w-full py-3.5 text-sm font-medium flex items-center justify-center gap-2"
+                    disabled={isRenderingImages}
+                    className="btn-dream-primary w-full py-3.5 text-sm font-medium flex items-center justify-center gap-2 disabled:opacity-45 disabled:pointer-events-none"
                   >
                     <Film size={16} />
                     生成梦境视频
                     <ArrowRight size={16} />
                   </button>
+                </div>
+              ) : isRenderingImages ? (
+                <div className="flex flex-col items-center gap-4 py-12">
+                  <Loader2 className="animate-spin text-white/40" size={40} />
+                  <p className="text-white/50">正在生成首批场景图片…</p>
                 </div>
               ) : scenePrompts.length > 0 ? (
                 <div className="space-y-6">

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { llmFetch } from "@/lib/llm-fetch";
 import { DreamStructuredSchema } from "@/lib/schema";
 import { MEMORY_PROBE_SYSTEM_PROMPT, MEMORY_PROBE_USER_PROMPT } from "@/lib/prompt-templates";
 import { parseLLMJson } from "@/lib/llm-utils";
@@ -33,7 +34,7 @@ export async function POST(request: NextRequest) {
       { temperature: 0.5, responseFormat: { type: "json_object" } }
     );
 
-    const response = await fetch(`${apiUrl}/chat/completions`, {
+    const response = await llmFetch(`${apiUrl}/chat/completions`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

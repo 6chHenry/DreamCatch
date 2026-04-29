@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
+import { llmFetch } from "@/lib/llm-fetch";
 import { DreamStructuredSchema } from "@/lib/schema";
 import { DREAM_PARSER_SYSTEM_PROMPT, DREAM_PARSER_USER_PROMPT } from "@/lib/prompt-templates";
 import { parseLLMJson } from "@/lib/llm-utils";
@@ -64,7 +65,7 @@ async function callLLMWithRetry(
         { temperature: 0.3, responseFormat: { type: "json_object" } }
       );
 
-      const response = await fetch(`${apiUrl}/chat/completions`, {
+      const response = await llmFetch(`${apiUrl}/chat/completions`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

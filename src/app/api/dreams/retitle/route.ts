@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { llmFetch } from "@/lib/llm-fetch";
 import { getAllDreamRecords, updateDream } from "@/lib/dream-store";
 import { DREAM_TITLE_SYSTEM_PROMPT, DREAM_TITLE_USER_PROMPT } from "@/lib/prompt-templates";
 import { buildLLMRequestBody } from "@/lib/llm-request";
@@ -38,7 +39,7 @@ async function generateTitle(
     { temperature: 0.8, responseFormat: { type: "json_object" } }
   );
 
-  const res = await fetch(`${apiUrl}/chat/completions`, {
+  const res = await llmFetch(`${apiUrl}/chat/completions`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",

@@ -1,7 +1,9 @@
 /**
- * gpt-image-2：优先 OpenAI 兼容的 images/generations（及带参考图时的 images/edits），
- * 失败时再试 chat/completions（部分中转站仅暴露该路径）。
+ * GPT Image 系列（gpt-image-2、gpt-image-2-pro 等）：优先 OpenAI 兼容的 images/generations
+ *（及带参考图时的 images/edits），失败时再试 chat/completions（部分中转站仅暴露该路径）。
  */
+
+import { llmFetch } from "@/lib/llm-fetch";
 
 function dataUrlFromB64(b64: string, mime = "image/png"): string {
   return `data:${mime};base64,${b64}`;
@@ -77,15 +79,20 @@ function parseChatSseForImage(raw: string): string | null {
   return last;
 }
 
-async function tryChatCompletionsImage(base: string, apiKey: string, prompt: string): Promise<string | null> {
-  const r = await fetch(`${base}/chat/completions`, {
+async function tryChatCompletionsImage(
+  base: string,
+  apiKey: string,
+  prompt: string,
+  model: string
+): Promise<string | null> {
+  const r = await llmFetch(`${base}/chat/completions`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${apiKey}`,
     },
     body: JSON.stringify({
-      model: "gpt-image-2",
+      model,
       messages: [
         {
           role: "user",
@@ -116,13 +123,16 @@ export async function generateGptImage2SceneImage(opts: {
   apiKey: string;
   prompt: string;
   refPngBuffer?: Buffer;
+  /** 默认同 gpt-image-2；可与上游 OpenAI 兼容名一致，例如 gpt-image-2-pro */
+  model?: string;
 }): Promise<{ imageUrl: string } | { error: string }> {
+  const model = opts.model?.trim() || "gpt-image-2";
   const base = opts.baseUrl.replace(/\/$/, "");
   const auth = { Authorization: `Bearer ${opts.apiKey}` };
 
   if (opts.refPngBuffer && opts.refPngBuffer.length > 0) {
     const form = new FormData();
-    form.set("model", "gpt-image-2");
+    form.set("model", model);
     form.set("prompt", opts.prompt);
     /** 与梦境详情页 `aspect-video`（16:9）一致；1792×1024 ≈ 1.75:1 */
     form.set("size", "1792x1024");
@@ -131,22 +141,22 @@ export async function generateGptImage2SceneImage(opts: {
       new Blob([new Uint8Array(opts.refPngBuffer)], { type: "image/png" }),
       "ref.png"
     );
-    const editRes = await fetch(`${base}/images/edits`, { method: "POST", headers: auth, body: form });
+    const editRes = await llmFetch(`${base}/images/edits`, { method: "POST", headers: auth, body: form });
     if (editRes.ok) {
       const data = (await editRes.json()) as unknown;
       const url = parseImagesApiData(data);
       if (url) return { imageUrl: url };
     } else {
       const err = await editRes.text();
-      console.warn("gpt-image-2 /images/edits:", editRes.status, err.slice(0, 300));
+      console.warn(`${model} /images/edits:`, editRes.status, err.slice(0, 300));
     }
   }
 
-  const genRes = await fetch(`${base}/images/generations`, {
+  const genRes = await llmFetch(`${base}/images/generations`, {
     method: "POST",
     headers: { ...auth, "Content-Type": "application/json" },
     body: JSON.stringify({
-      model: "gpt-image-2",
+      model,
       prompt: opts.prompt,
       n: 1,
       size: "1792x1024",
@@ -162,10 +172,10 @@ export async function generateGptImage2SceneImage(opts: {
   }
 
   const genErr = await genRes.text();
-  console.warn("gpt-image-2 /images/generations:", genRes.status, genErr.slice(0, 400));
+  console.warn(`${model} /images/generations:`, genRes.status, genErr.slice(0, 400));
 
-  const fromChat = await tryChatCompletionsImage(base, opts.apiKey, opts.prompt);
+  const fromChat = await tryChatCompletionsImage(base, opts.apiKey, opts.prompt, model);
   if (fromChat) return { imageUrl: fromChat };
 
-  return { error: genErr.slice(0, 800) || "GPT Image 2 生成失败" };
+  return { error: genErr.slice(0, 800) || "GPT Image 生成失败" };
 }

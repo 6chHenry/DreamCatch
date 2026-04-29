@@ -164,6 +164,13 @@ export const DreamScenePromptSchema = z.object({
   prompts: z.array(z.string()),
 });
 
+export const StyleGuideSchema = z.object({
+  artStyle: z.string().optional(),
+  colorPalette: z.string().optional(),
+  moodKeywords: z.string().optional(),
+  characterAnchors: z.record(z.string()).optional(),
+});
+
 export const DreamSchema = z.object({
   id: z.string(),
   title: z.string(),
@@ -173,6 +180,7 @@ export const DreamSchema = z.object({
   audioFileName: z.string().optional(),
   scenes: z.array(DreamSceneImageSchema),
   sceneRenderPrompts: z.array(DreamScenePromptSchema).optional(),
+  sceneStyleGuide: StyleGuideSchema.optional(),
   videoUrl: z.string().optional(),
   aiInterpretation: z.string().optional(),
   userNotes: z.string().optional(),

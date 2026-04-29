@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { llmFetch } from "@/lib/llm-fetch";
 
 function sleep(ms: number) {
   return new Promise((r) => setTimeout(r, ms));
@@ -95,7 +96,7 @@ export async function POST(request: NextRequest) {
     };
 
     const postVideoStart = (body: Record<string, unknown>) =>
-      fetch(`${grokApiUrl}/${videoGenPath}`, {
+      llmFetch(`${grokApiUrl}/${videoGenPath}`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -158,7 +159,7 @@ export async function POST(request: NextRequest) {
     let videoUrl = "";
 
     while (Date.now() < deadline) {
-      const statusRes = await fetch(`${grokApiUrl}/videos/${requestId}`, {
+      const statusRes = await llmFetch(`${grokApiUrl}/videos/${requestId}`, {
         headers: { Authorization: `Bearer ${grokApiKey}` },
       });
 

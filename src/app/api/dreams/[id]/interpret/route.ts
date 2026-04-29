@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { llmFetch } from "@/lib/llm-fetch";
 import type { Dream } from "@/types/dream";
 import { getDreamById } from "@/lib/dream-store";
 import {
@@ -68,7 +69,7 @@ export async function POST(
       { temperature: 0.65 }
     );
 
-    const res = await fetch(`${apiUrl.replace(/\/$/, "")}/chat/completions`, {
+    const res = await llmFetch(`${apiUrl.replace(/\/$/, "")}/chat/completions`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
