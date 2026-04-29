@@ -39,7 +39,7 @@ git push origin master
 
 | 问题 | 说明 |
 |------|------|
-| **本地 `data/`** | Vercel 无持久磁盘；`data/dreams.json`、`data/audio/` 等**不会像本机一样长期保存**。若要线上存梦，需接数据库或对象存储（如 Vercel Blob、S3、PlanetScale 等），这是后续产品改动。 |
+| **服务端数据目录** | 本机仍为项目根下 `data/`。在 **Vercel** 上会使用 **`{系统临时目录}/dreamcup-data`**（因 `/var/task` 只读），避免 `ENOENT`。**该路径在 serverless 上不等于长期磁盘**，冷热实例间可能不一致；要可靠云上持久化仍需数据库或对象存储（Vercel Postgres、Blob、KV 等）。 |
 | **ASR 耗时** | 语音转写 + ffmpeg 可能较慢。`vercel.json` 已把 `/api/asr` 的 `maxDuration` 设为 60 秒；**免费 Hobby 套餐单次函数上限多为 10 秒**，复杂音频可能超时，需升级 Pro 或改用外部 ASR 服务。 |
 | **密钥** | 密钥只放在 Vercel 环境变量，勿写进代码仓库。 |
 

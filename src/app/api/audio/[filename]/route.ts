@@ -2,13 +2,15 @@ import { NextRequest, NextResponse } from "next/server";
 import fs from "fs";
 import path from "path";
 
+import { getServerDataRoot } from "@/lib/server-data-root";
+
 export async function GET(
   _request: NextRequest,
   { params }: { params: Promise<{ filename: string }> }
 ) {
   try {
     const { filename } = await params;
-    const audioDir = path.join(process.cwd(), "data", "audio");
+    const audioDir = path.join(getServerDataRoot(), "audio");
     const filePath = path.join(audioDir, filename);
 
     if (!fs.existsSync(filePath)) {

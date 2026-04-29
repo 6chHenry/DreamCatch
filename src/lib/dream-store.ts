@@ -2,8 +2,9 @@ import fs from "fs";
 import path from "path";
 import type { Dream } from "@/types/dream";
 import { getDreamJournalSortTime } from "@/lib/dream-dates";
+import { getServerDataRoot } from "@/lib/server-data-root";
 
-const DATA_DIR = path.join(process.cwd(), "data");
+const DATA_DIR = getServerDataRoot();
 const DREAMS_FILE = path.join(DATA_DIR, "dreams.json");
 
 function ensureDataDir(): void {

@@ -3,6 +3,7 @@ import fs from "fs";
 import path from "path";
 import { llmFetch } from "@/lib/llm-fetch";
 import { shouldTranscodeToWavForDoubao, transcodeBufferToWavPcm16kMono } from "@/lib/audio-convert";
+import { getServerDataRoot } from "@/lib/server-data-root";
 
 export const runtime = "nodejs";
 
@@ -27,7 +28,7 @@ export async function POST(request: NextRequest) {
     const audioId = crypto.randomUUID();
     const audioFileName = `${audioId}.${ext}`;
 
-    const audioDir = path.join(process.cwd(), "data", "audio");
+    const audioDir = path.join(getServerDataRoot(), "audio");
     if (!fs.existsSync(audioDir)) {
       fs.mkdirSync(audioDir, { recursive: true });
     }

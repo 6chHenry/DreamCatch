@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import fs from "fs";
 import path from "path";
 import { personReferenceFilePath } from "@/lib/person-store";
+import { getServerDataRoot } from "@/lib/server-data-root";
 
 export const runtime = "nodejs";
 
@@ -21,7 +22,7 @@ export async function GET(
 
     const filePath = personReferenceFilePath(filename);
     const resolved = path.resolve(filePath);
-    const base = path.resolve(path.join(process.cwd(), "data", "person-reference"));
+    const base = path.resolve(path.join(getServerDataRoot(), "person-reference"));
     if (!resolved.startsWith(base)) {
       return NextResponse.json({ error: "Invalid path" }, { status: 400 });
     }

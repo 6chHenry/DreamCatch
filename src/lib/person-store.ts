@@ -6,8 +6,9 @@ import {
   extractShortTagsFromText,
   mergeUniqueTags,
 } from "@/lib/person-tag-extract";
+import { getServerDataRoot } from "@/lib/server-data-root";
 
-const PERSON_REF_DIR = path.join(process.cwd(), "data", "person-reference");
+const PERSON_REF_DIR = path.join(getServerDataRoot(), "person-reference");
 
 export function ensurePersonReferenceDir(): void {
   if (!fs.existsSync(PERSON_REF_DIR)) {
@@ -31,7 +32,7 @@ export function deletePersonReferenceFile(filename: string | undefined): void {
   }
 }
 
-const DATA_DIR = path.join(process.cwd(), "data");
+const DATA_DIR = getServerDataRoot();
 const PERSONS_FILE = path.join(DATA_DIR, "persons.json");
 
 /** 读盘时归一化：合并旧版 `relationships`，并去掉该字段以便下次写回为新结构 */
