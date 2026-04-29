@@ -168,7 +168,7 @@ export const StyleGuideSchema = z.object({
   artStyle: z.string().optional(),
   colorPalette: z.string().optional(),
   moodKeywords: z.string().optional(),
-  characterAnchors: z.record(z.string()).optional(),
+  characterAnchors: z.record(z.string(), z.string()).optional(),
 });
 
 export const DreamSchema = z.object({
